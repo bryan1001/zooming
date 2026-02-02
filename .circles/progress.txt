@@ -33,6 +33,12 @@
 - For multi-material meshes (e.g., different textures per face), use array of materials: new THREE.Mesh(geometry, materials[])
 - BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
 - createWindowTextures(seed, litProbability) in src/city/windowTexture.ts returns colorTexture and emissiveTexture
+- onTransition(callback) in beatDetector.ts for major musical transitions (drops/breakdowns), debounced to 8 seconds
+- BulletAvatar class in src/camera/bulletAvatar.ts for third-person view, takes (scene, flightPath) constructor args
+- Use CapsuleGeometry for elongated glowing objects, rotateX(Math.PI/2) to align with Z-axis
+- Post-processing: import from 'three/examples/jsm/postprocessing/', use EffectComposer with RenderPass + effect passes
+- initMotionBlur(renderer, scene, camera) returns composer, use renderWithMotionBlur() instead of renderer.render()
+- Call resizeMotionBlur(width, height) on window resize to update composer size
 
 ---
 
@@ -315,4 +321,85 @@
   - Cache shared textures (like street texture) to avoid recreating on every chunk
   - When disposing materials, check if Array.isArray(material) for multi-material meshes
   - Ground at y=0, camera at y=30 gives good visibility of streets at building bases
+---
+
+## 2026-02-02 - US-015
+- What was implemented:
+  - Added transition detection to src/audio/beatDetector.ts module
+  - Detects significant energy changes over 2-second window (TRANSITION_HISTORY_SIZE = 120 frames)
+  - Compares recent energy (~0.5s) to long-term average for detection
+  - Energy spike (drops) detected when ratio > 2.0, energy dip (breakdowns) when ratio < 0.5
+  - Debounced to max 1 transition per 8 seconds (MIN_TRANSITION_INTERVAL_MS = 8000)
+  - Exports onTransition(callback) and offTransition(callback) for subscriptions
+  - Updates resetBeatDetection() to clear transition state
+- Files changed:
+  - src/audio/beatDetector.ts (added transition detection logic and exports)
+- **Learnings for future iterations:**
+  - Use longer history window (2s vs 1s) for transition detection to distinguish from beats
+  - Compare recent average to long-term average for detecting significant energy shifts
+  - Energy ratio > 2.0 indicates drop/build-up climax, ratio < 0.5 indicates breakdown
+  - Debounce of 8 seconds prevents multiple transitions during sustained energy changes
+  - offTransition(callback) available for cleanup when needed
+---
+
+## 2026-02-02 - US-016
+- What was implemented:
+  - Created src/camera/bulletAvatar.ts module with BulletAvatar class
+  - Glowing elongated capsule geometry using THREE.CapsuleGeometry
+  - Emissive cyan material (0x00ffff) with metallic sheen for bullet glow
+  - PointLight attached to bullet for dynamic glow illumination
+  - update(z) method to follow flight path position and orientation
+  - show() and hide() methods for perspective switching
+  - dispose() method for cleanup
+- Files changed:
+  - src/camera/bulletAvatar.ts (new file - bullet avatar for third-person view)
+- **Learnings for future iterations:**
+  - CapsuleGeometry(radius, length, capSegments, radialSegments) creates elongated capsule
+  - rotateX(Math.PI/2) on geometry aligns capsule with Z-axis (forward direction)
+  - Use group.lookAt() for orientation when following a path with tangent
+  - BulletAvatar requires FlightPath from cameraController.getFlightPath()
+  - Start bullet hidden (first-person default), show() for third-person transitions
+---
+
+## 2026-02-02 - US-017
+- What was implemented:
+  - Added perspective switching to CameraController (first-person/third-person)
+  - Smooth camera transition animation using smoothstep easing (0.8s duration)
+  - Third-person view positions camera behind and above bullet (offset: y=15, z=-40)
+  - Auto-return to first-person after 6 seconds
+  - Perspective change event system with onPerspectiveChange callback
+  - Connected onTransition events from beatDetector to trigger third-person
+  - Integrated BulletAvatar visibility with perspective changes
+  - BulletAvatar position updated in animation loop
+- Files changed:
+  - src/camera/cameraController.ts (added perspective switching logic)
+  - src/main.ts (integrated BulletAvatar, transition events, perspective callbacks)
+- **Learnings for future iterations:**
+  - Use smoothstep(t) = t*t*(3-2*t) for natural camera transitions
+  - Calculate third-person offset relative to tangent direction using cross products
+  - lerpVectors() interpolates between two Vector3 positions smoothly
+  - perspectiveTransitionProgress tracks 0→1 during transition
+  - onTransition callback provides intensity (0-1), use threshold (>0.3) to avoid false triggers
+  - Keep auto-return timer (THIRD_PERSON_DURATION) around 6 seconds for dramatic effect
+---
+
+## 2026-02-02 - US-018
+- What was implemented:
+  - Created src/effects/motionBlur.ts module for motion blur post-processing
+  - Added EffectComposer with RenderPass and custom RadialBlurShader
+  - Radial blur creates speed lines effect emanating from screen center
+  - Blur intensity scales with camera speed (no blur at base 50 units/s, max at 150 units/s)
+  - Updated main.ts to use composer for rendering and update blur on speed changes
+  - Added resize handler for composer
+- Files changed:
+  - src/effects/motionBlur.ts (new file - radial motion blur post-processing)
+  - src/main.ts (integrated motion blur: init, update, render, resize)
+- **Learnings for future iterations:**
+  - Three.js post-processing: import from 'three/examples/jsm/postprocessing/'
+  - EffectComposer chains passes: RenderPass first, then effect passes
+  - Custom shaders use ShaderPass with uniforms object
+  - Radial blur samples along direction from center for speed lines effect
+  - Call composer.setSize() on window resize to match renderer size
+  - Use renderWithMotionBlur() instead of renderer.render() when using composer
+  - Keep MAX_BLUR_STRENGTH low (0.15) to avoid nausea while maintaining speed feel
 ---

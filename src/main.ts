@@ -7,6 +7,7 @@ import { BulletAvatar } from './camera/bulletAvatar';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
 import { updateBeatDetection, onBeat, onTransition } from './audio/beatDetector';
 import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
+import { initMotionBlur, updateMotionBlur, renderWithMotionBlur, resizeMotionBlur } from './effects/motionBlur';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -29,6 +30,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 // Setup atmospheric night lighting
 setupLighting(scene);
+
+// Initialize motion blur post-processing
+initMotionBlur(renderer, scene, camera);
 
 // Initialize ChunkManager for infinite city
 const chunkManager = new ChunkManager(scene);
@@ -78,6 +82,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  resizeMotionBlur(window.innerWidth, window.innerHeight);
 });
 
 // Track time for smooth movement
@@ -112,12 +117,16 @@ function animate() {
 
     // Update beat visual effects (FOV pulse, vignette decay)
     updateBeatEffects(deltaTime);
+
+    // Update motion blur intensity based on current speed
+    updateMotionBlur(cameraController.getSpeed());
   }
 
   // Update chunk manager to load/unload chunks as camera moves
   chunkManager.update(camera.position);
 
-  renderer.render(scene, camera);
+  // Render with motion blur post-processing
+  renderWithMotionBlur();
 }
 
 // Handle start overlay click
