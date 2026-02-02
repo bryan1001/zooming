@@ -200,6 +200,13 @@ export class CameraController {
     );
 
     this.camera.lookAt(lookTarget);
+
+    // Apply banking (Z-axis roll) for dramatic turn effect
+    const bankAngle = this.turnController.getBankAngle();
+    if (bankAngle !== 0) {
+      // Rotate camera around its forward (Z) axis for banking
+      this.camera.rotateZ(bankAngle);
+    }
   }
 
   /**

@@ -5,6 +5,12 @@ import { BLOCK_SIZE } from '../city/chunk';
 // Turn animation duration (snappy, 150-200ms)
 const TURN_DURATION = 0.175; // 175ms - middle of the range
 
+// Banking animation constants
+const BANK_ANGLE_DEGREES = 50; // Target bank angle in degrees
+const BANK_ANTICIPATION_TIME = 0.05; // 50ms anticipation before turn
+const BANK_FOLLOW_THROUGH_TIME = 0.1; // 100ms follow-through after turn
+const BANK_ANGLE_RADIANS = (BANK_ANGLE_DEGREES * Math.PI) / 180;
+
 // Obstacle detection distances
 const TURN_CHECK_DISTANCE = 100; // Check 100 units in turn direction
 const POST_TURN_CHECK_DISTANCE = 200; // Check 200 units ahead after turn
@@ -26,6 +32,13 @@ interface TurnState {
   targetAngle: number;
 }
 
+// Banking state
+interface BankingState {
+  phase: 'idle' | 'anticipation' | 'turning' | 'follow-through';
+  progress: number; // 0-1 within current phase
+  direction: TurnDirection; // Which way we're banking
+}
+
 /**
  * TurnController manages sharp 90-degree turns during flight.
  * Turns are snappy (150-200ms) and trigger flight path regeneration.
@@ -33,6 +46,7 @@ interface TurnState {
 export class TurnController {
   private flightPath: FlightPath;
   private turnState: TurnState;
+  private bankingState: BankingState;
   private currentFlightAngle: number; // Current flight direction in radians (0 = +Z)
 
   // Callbacks for turn events
@@ -51,6 +65,11 @@ export class TurnController {
       startAngle: 0,
       targetAngle: 0,
     };
+    this.bankingState = {
+      phase: 'idle',
+      progress: 0,
+      direction: 'left',
+    };
   }
 
   /**
@@ -67,8 +86,8 @@ export class TurnController {
    * @returns true if turn was started, false if already turning
    */
   public executeTurn(direction: TurnDirection): boolean {
-    // Don't start a new turn if already turning
-    if (this.turnState.isActive) {
+    // Don't start a new turn if already turning or banking
+    if (this.turnState.isActive || this.bankingState.phase !== 'idle') {
       return false;
     }
 
@@ -76,9 +95,16 @@ export class TurnController {
     const turnAngle = direction === 'left' ? Math.PI / 2 : -Math.PI / 2;
     const targetAngle = this.currentFlightAngle + turnAngle;
 
-    // Start the turn
+    // Start banking anticipation phase (50ms before turn begins)
+    this.bankingState = {
+      phase: 'anticipation',
+      progress: 0,
+      direction,
+    };
+
+    // Prepare turn state (will be activated after anticipation)
     this.turnState = {
-      isActive: true,
+      isActive: false, // Will be set to true after anticipation
       progress: 0,
       direction,
       startAngle: this.currentFlightAngle,
@@ -91,24 +117,34 @@ export class TurnController {
   /**
    * Update turn animation. Call each frame.
    * @param deltaTime Time since last frame in seconds
-   * @returns true if currently turning, false otherwise
+   * @returns true if currently turning or banking, false otherwise
    */
   public update(deltaTime: number): boolean {
+    // Update banking state machine
+    this.updateBanking(deltaTime);
+
     if (!this.turnState.isActive) {
-      return false;
+      return this.bankingState.phase !== 'idle';
     }
 
     // Progress the turn animation
     this.turnState.progress += deltaTime / TURN_DURATION;
 
     if (this.turnState.progress >= 1) {
-      // Turn complete
+      // Turn complete - start follow-through phase
       this.turnState.progress = 1;
       this.turnState.isActive = false;
       this.currentFlightAngle = this.turnState.targetAngle;
 
       // Normalize angle to keep it in reasonable range
       this.currentFlightAngle = this.normalizeAngle(this.currentFlightAngle);
+
+      // Start follow-through phase for banking
+      this.bankingState = {
+        phase: 'follow-through',
+        progress: 0,
+        direction: this.turnState.direction,
+      };
 
       // Notify callbacks
       for (const callback of this.turnCompleteCallbacks) {
@@ -118,10 +154,49 @@ export class TurnController {
       // Trigger flight path regeneration in new direction
       this.flightPath.setFlightDirection(this.currentFlightAngle);
 
-      return false;
+      return true; // Still banking during follow-through
     }
 
     return true;
+  }
+
+  /**
+   * Update banking state machine.
+   * @param deltaTime Time since last frame in seconds
+   */
+  private updateBanking(deltaTime: number): void {
+    switch (this.bankingState.phase) {
+      case 'anticipation':
+        // Progress through anticipation phase
+        this.bankingState.progress += deltaTime / BANK_ANTICIPATION_TIME;
+        if (this.bankingState.progress >= 1) {
+          // Anticipation complete - start the actual turn
+          this.bankingState.phase = 'turning';
+          this.bankingState.progress = 0;
+          this.turnState.isActive = true;
+        }
+        break;
+
+      case 'turning':
+        // Banking is at full angle during turn, progress tracks with turn
+        this.bankingState.progress = this.turnState.progress;
+        break;
+
+      case 'follow-through':
+        // Progress through follow-through phase
+        this.bankingState.progress += deltaTime / BANK_FOLLOW_THROUGH_TIME;
+        if (this.bankingState.progress >= 1) {
+          // Follow-through complete - return to idle
+          this.bankingState.phase = 'idle';
+          this.bankingState.progress = 0;
+        }
+        break;
+
+      case 'idle':
+      default:
+        // Nothing to do
+        break;
+    }
   }
 
   /**
@@ -140,6 +215,42 @@ export class TurnController {
       this.turnState.targetAngle,
       t
     );
+  }
+
+  /**
+   * Get the current bank angle (Z-axis roll) in radians.
+   * Positive values roll right, negative values roll left.
+   * The camera banks in the direction of the turn.
+   */
+  public getBankAngle(): number {
+    if (this.bankingState.phase === 'idle') {
+      return 0;
+    }
+
+    // Determine sign based on turn direction (bank into the turn)
+    // Left turn = negative roll (camera tilts left), right turn = positive roll
+    const sign = this.bankingState.direction === 'left' ? -1 : 1;
+
+    let bankAmount = 0;
+
+    switch (this.bankingState.phase) {
+      case 'anticipation':
+        // Ease in from 0 to full bank during anticipation
+        bankAmount = this.easeInOutCubic(this.bankingState.progress);
+        break;
+
+      case 'turning':
+        // Full bank angle during the turn
+        bankAmount = 1;
+        break;
+
+      case 'follow-through':
+        // Ease out from full bank back to 0
+        bankAmount = 1 - this.easeInOutCubic(this.bankingState.progress);
+        break;
+    }
+
+    return sign * bankAmount * BANK_ANGLE_RADIANS;
   }
 
   /**
