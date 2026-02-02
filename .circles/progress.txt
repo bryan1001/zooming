@@ -3,6 +3,10 @@
 - Three.js scene, camera, and renderer are initialized in src/main.ts
 - Styles go in src/style.css with fullscreen canvas setup
 - Use MeshStandardMaterial for objects that need lighting
+- City-related modules go in src/city/ directory
+- Use seeded random (mulberry32) for reproducible procedural generation
+- Run `npm run typecheck` to verify TypeScript passes
+- CHUNK_SIZE is 200 units (exported from chunk.ts), use for chunk management calculations
 
 ---
 
@@ -23,4 +27,38 @@
   - Three.js requires both three and @types/three packages
   - Canvas needs display:block to prevent scrollbars
   - MeshStandardMaterial requires lighting to be visible
+  - Run `npm run typecheck` to verify TypeScript (script added to package.json)
+---
+
+## 2026-02-02 - US-002
+- What was implemented:
+  - Created src/city/building.ts module with createBuilding function
+  - Buildings use seeded random number generator for reproducible randomness
+  - Building dimensions: height 10-100 units, width/depth 5-20 units
+  - Buildings positioned with base at y=0
+  - Added typecheck script to package.json
+- Files changed:
+  - src/city/building.ts (new file - building generator)
+  - package.json (added typecheck script)
+- **Learnings for future iterations:**
+  - Use seeded random (mulberry32) for reproducible procedural generation
+  - Position meshes by setting y to half the height for floor-aligned objects
+  - City-related modules go in src/city/ directory
+---
+
+## 2026-02-02 - US-003
+- What was implemented:
+  - Created src/city/chunk.ts module with createChunk function
+  - Chunk is a 200x200 unit area (CHUNK_SIZE constant exported)
+  - Buildings placed in a grid pattern with 25-unit blocks (provides street gaps)
+  - Uses hashPosition() for reproducible building seeds based on world coordinates
+  - Chunk stores its coordinates in userData for identification
+- Files changed:
+  - src/city/chunk.ts (new file - chunk generator)
+- **Learnings for future iterations:**
+  - CHUNK_SIZE is 200 units, exported for use by other modules
+  - Block size of 25 units provides room for buildings (5-20 units) plus street gaps
+  - Use hashPosition() pattern to generate unique seeds from world coordinates
+  - Store chunk identification in Group.userData for later management
+  - Grid layout: blocksPerSide = floor(CHUNK_SIZE / BLOCK_SIZE) = 8 buildings per axis
 ---
