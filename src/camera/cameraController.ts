@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { FlightPath } from './flightPath';
+import { TurnController } from './turnController';
+import type { TurnDirection } from './turnController';
+
+// Re-export TurnDirection for convenience
+export type { TurnDirection };
 
 // Default base speed (units per second)
 const DEFAULT_BASE_SPEED = 50;
@@ -15,11 +20,14 @@ const THIRD_PERSON_DURATION = 6; // How long to stay in third-person (seconds)
 /**
  * CameraController manages camera movement along a flight path.
  * The camera follows a smooth spline curve through the city.
+ * Supports 90-degree turns via TurnController.
  */
 export class CameraController {
   private camera: THREE.PerspectiveCamera;
   private flightPath: FlightPath;
-  private currentZ: number;
+  private turnController: TurnController;
+  private currentZ: number; // Legacy Z tracking (for backward compatibility)
+  private currentDistance: number; // Distance traveled along the path
   private baseSpeed: number;
   private currentSpeed: number;
 
@@ -36,7 +44,9 @@ export class CameraController {
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
     this.flightPath = new FlightPath();
+    this.turnController = new TurnController(this.flightPath);
     this.currentZ = 0;
+    this.currentDistance = 0;
     this.baseSpeed = DEFAULT_BASE_SPEED;
     this.currentSpeed = this.baseSpeed;
 
@@ -93,11 +103,16 @@ export class CameraController {
    * @param deltaTime Time since last frame in seconds
    */
   public update(deltaTime: number): void {
-    // Move forward along the path
-    this.currentZ += this.currentSpeed * deltaTime;
+    // Move forward along the path (constant speed maintained during turns)
+    const distanceThisFrame = this.currentSpeed * deltaTime;
+    this.currentDistance += distanceThisFrame;
+    this.currentZ += distanceThisFrame; // Legacy tracking
 
-    // Extend the path if needed
-    this.flightPath.extendIfNeeded(this.currentZ);
+    // Extend the path if needed (using distance-based check)
+    this.flightPath.extendIfNeededByDistance(this.currentDistance);
+
+    // Update turn animation (if active)
+    this.turnController.update(deltaTime);
 
     // Handle perspective transition animation
     if (this.isTransitioning) {
@@ -122,12 +137,19 @@ export class CameraController {
   }
 
   /**
-   * Update camera position and look direction based on current Z
+   * Update camera position and look direction based on current distance
    */
   private updateCameraPosition(): void {
-    // Get position and tangent from the flight path (bullet position)
-    const bulletPosition = this.flightPath.getPositionAtZ(this.currentZ);
-    const tangent = this.flightPath.getTangentAtZ(this.currentZ);
+    // Get position and tangent from the flight path using distance (bullet position)
+    const bulletPosition = this.flightPath.getPositionAtDistance(this.currentDistance);
+    let tangent = this.flightPath.getTangentAtDistance(this.currentDistance);
+
+    // During a turn, rotate the tangent based on turn animation progress
+    // This creates the visual turning effect
+    if (this.turnController.isTurning()) {
+      const turnDirection = this.turnController.getFlightDirection();
+      tangent = turnDirection.clone();
+    }
 
     // Calculate first-person position (directly on bullet)
     const firstPersonPos = bulletPosition.clone();
@@ -268,5 +290,28 @@ export class CameraController {
     this.perspectiveChangeCallbacks = this.perspectiveChangeCallbacks.filter(
       cb => cb !== callback
     );
+  }
+
+  /**
+   * Execute a 90-degree turn in the specified direction.
+   * @param direction 'left' or 'right'
+   * @returns true if turn was started, false if already turning
+   */
+  public executeTurn(direction: TurnDirection): boolean {
+    return this.turnController.executeTurn(direction);
+  }
+
+  /**
+   * Check if a turn is currently in progress.
+   */
+  public isTurning(): boolean {
+    return this.turnController.isTurning();
+  }
+
+  /**
+   * Get the turn controller for advanced access (e.g., subscribing to turn events)
+   */
+  public getTurnController(): TurnController {
+    return this.turnController;
   }
 }

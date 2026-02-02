@@ -90,6 +90,16 @@ window.addEventListener('resize', () => {
   resizeMotionBlur(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
 });
 
+// Keyboard controls for testing turns
+window.addEventListener('keydown', (e) => {
+  if (!started) return;
+  if (e.key === 'ArrowLeft' || e.key === 'a') {
+    cameraController.executeTurn('left');
+  } else if (e.key === 'ArrowRight' || e.key === 'd') {
+    cameraController.executeTurn('right');
+  }
+});
+
 // Track time for smooth movement
 let lastTime = performance.now();
 let started = false;
