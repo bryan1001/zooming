@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { ChunkManager } from './city/chunkManager';
 import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
+import { initAudio, loadAudio, play } from './audio/audioPlayer';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -41,6 +42,7 @@ window.addEventListener('resize', () => {
 
 // Track time for smooth movement
 let lastTime = performance.now();
+let started = false;
 
 // Animation loop
 function animate() {
@@ -51,13 +53,39 @@ function animate() {
   const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
   lastTime = currentTime;
 
-  // Update camera controller (moves camera along flight path)
-  cameraController.update(deltaTime);
+  // Only update camera when started
+  if (started) {
+    // Update camera controller (moves camera along flight path)
+    cameraController.update(deltaTime);
+  }
 
   // Update chunk manager to load/unload chunks as camera moves
   chunkManager.update(camera.position);
 
   renderer.render(scene, camera);
 }
+
+// Handle start overlay click
+const startOverlay = document.getElementById('start-overlay');
+
+async function startExperience() {
+  if (started) return;
+
+  // Initialize and load audio
+  initAudio();
+  await loadAudio();
+
+  // Start playing audio
+  play();
+
+  // Hide the overlay
+  startOverlay?.classList.add('hidden');
+
+  // Start the experience
+  started = true;
+  lastTime = performance.now(); // Reset time to avoid big deltaTime jump
+}
+
+startOverlay?.addEventListener('click', startExperience);
 
 animate();
