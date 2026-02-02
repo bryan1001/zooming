@@ -133,7 +133,7 @@
         "Verify in browser - clicking start plays audio"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Use a royalty-free track. Suggestion: search for 'royalty free synthwave' and download one"
     },
     {
@@ -149,7 +149,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

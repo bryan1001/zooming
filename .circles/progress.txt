@@ -17,6 +17,14 @@
 - BLOCK_SIZE is 25 units (from chunk.ts), streets run at multiples of BLOCK_SIZE
 - FLIGHT_HEIGHT is 30 units (consistent with camera y position)
 - CameraController manages camera movement along FlightPath, use cameraController.update(deltaTime) each frame
+- Audio modules go in src/audio/ directory
+- AudioContext must be created after user interaction (browser autoplay policy)
+- Use click-to-start overlay pattern: show overlay, wait for click, init audio, hide overlay, start experience
+- getSourceNode() from audioPlayer.ts returns AudioBufferSourceNode for connecting to AnalyserNode
+- Audio analyser is auto-initialized by loadAudio() and connects source->analyser->destination
+- Use getFrequencyData() for Uint8Array of frequency bins, getAverageFrequency() for quick energy reading
+- getFrequencyRangeAverage(startBin, endBin) isolates frequency bands (e.g., bass 0-10, mids 10-100)
+- FFT_SIZE is 2048, frequencyBinCount is 1024 (bins cover 0 to Nyquist frequency)
 
 ---
 
@@ -151,4 +159,47 @@
   - Camera position and lookAt are updated via updateCameraPosition() internal method
   - getCurrentZ() returns the Z position for chunk manager coordination
   - All camera movement should go through CameraController.update(deltaTime)
+---
+
+## 2026-02-02 - US-008
+- What was implemented:
+  - Added stock synthwave MP3 to public/audio/synthwave.mp3 (royalty-free from Pixabay)
+  - Created src/audio/audioPlayer.ts module with Web Audio API
+  - AudioContext initialized on user click (browser autoplay policy compliance)
+  - Exports initAudio(), loadAudio(), play(), stop(), getAudioContext(), getSourceNode()
+  - Added click-to-start overlay to index.html with "Zooming" title
+  - Styled overlay with purple glow effect and pulse animation in style.css
+  - Main.ts now waits for click before starting camera movement
+- Files changed:
+  - public/audio/synthwave.mp3 (new file - royalty-free synthwave track)
+  - src/audio/audioPlayer.ts (new file - Web Audio API player)
+  - index.html (added start-overlay div)
+  - src/style.css (added overlay styles)
+  - src/main.ts (integrated audio player, click-to-start flow)
+- **Learnings for future iterations:**
+  - Audio modules go in src/audio/ directory
+  - Browser autoplay policy requires AudioContext creation after user interaction
+  - Use audioContext.state === 'suspended' check and resume() for policy compliance
+  - getSourceNode() returns the AudioBufferSourceNode for connecting to AnalyserNode later
+  - Start overlay pattern: show overlay, wait for click, init audio, hide overlay, start experience
+  - Use CSS transition for smooth overlay fade-out (opacity 0.5s ease)
+---
+
+## 2026-02-02 - US-009
+- What was implemented:
+  - Created src/audio/audioAnalyser.ts module with Web Audio API AnalyserNode
+  - AnalyserNode configured with FFT size 2048 (1024 frequency bins)
+  - Exports getFrequencyData() returning Uint8Array of frequency values (0-255)
+  - Exports getAverageFrequency() for quick overall energy reading
+  - Exports getFrequencyRangeAverage(startBin, endBin) for band-specific analysis
+  - Updated audioPlayer.ts to auto-initialize analyser and route audio through it
+- Files changed:
+  - src/audio/audioAnalyser.ts (new file - frequency analysis module)
+  - src/audio/audioPlayer.ts (imports analyser, routes audio through it)
+- **Learnings for future iterations:**
+  - AnalyserNode.getByteFrequencyData() fills a Uint8Array with frequency values 0-255
+  - Must use Uint8Array<ArrayBuffer> type for TypeScript compatibility with Web Audio API
+  - Audio routing: sourceNode -> analyserNode -> audioContext.destination
+  - smoothingTimeConstant (0.8) smooths frequency data over time for less jittery values
+  - frequencyBinCount = fftSize / 2; each bin covers (sampleRate / fftSize) Hz
 ---

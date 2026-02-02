@@ -3,6 +3,8 @@
  * Uses Web Audio API for precise timing and future audio analysis.
  */
 
+import { initAnalyser, getAnalyserNode } from './audioAnalyser';
+
 let audioContext: AudioContext | null = null;
 let audioBuffer: AudioBuffer | null = null;
 let sourceNode: AudioBufferSourceNode | null = null;
@@ -28,12 +30,16 @@ export function getAudioContext(): AudioContext | null {
 }
 
 /**
- * Load the audio file into a buffer
+ * Load the audio file into a buffer.
+ * Also initializes the audio analyser.
  */
 export async function loadAudio(): Promise<void> {
   if (!audioContext) {
     initAudio();
   }
+
+  // Initialize analyser after audio context is created
+  initAnalyser();
 
   const response = await fetch(AUDIO_PATH);
   const arrayBuffer = await response.arrayBuffer();
@@ -63,7 +69,16 @@ export function play(): AudioBufferSourceNode | null {
   // Create and configure source node
   sourceNode = audioContext.createBufferSource();
   sourceNode.buffer = audioBuffer;
-  sourceNode.connect(audioContext.destination);
+
+  // Connect through analyser if available
+  const analyser = getAnalyserNode();
+  if (analyser) {
+    sourceNode.connect(analyser);
+    analyser.connect(audioContext.destination);
+  } else {
+    // Fallback: connect directly to destination
+    sourceNode.connect(audioContext.destination);
+  }
 
   // Track playing state
   sourceNode.onended = () => {
