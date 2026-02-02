@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { ChunkManager } from './city/chunkManager';
 import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
+import { BulletAvatar } from './camera/bulletAvatar';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
-import { updateBeatDetection, onBeat } from './audio/beatDetector';
+import { updateBeatDetection, onBeat, onTransition } from './audio/beatDetector';
 import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
 
 // Get canvas element
@@ -35,8 +36,28 @@ const chunkManager = new ChunkManager(scene);
 // Initialize camera controller for smooth path following
 const cameraController = new CameraController(camera);
 
+// Initialize bullet avatar for third-person view
+const bulletAvatar = new BulletAvatar(scene, cameraController.getFlightPath());
+
 // Initialize beat effects for visual feedback
 initBeatEffects(camera);
+
+// Listen for perspective changes to show/hide bullet avatar
+cameraController.onPerspectiveChange((mode) => {
+  if (mode === 'third-person') {
+    bulletAvatar.show();
+  } else {
+    bulletAvatar.hide();
+  }
+});
+
+// Transition detection callback - switch to third-person on musical transitions
+onTransition((intensity) => {
+  // Only switch to third-person on transitions with enough intensity
+  if (intensity > 0.3) {
+    cameraController.switchToThirdPerson();
+  }
+});
 
 // Speed boost configuration for beat sync
 const MIN_SPEED_BOOST = 1.5; // 50% boost at minimum intensity
@@ -82,6 +103,9 @@ function animate() {
 
     // Update camera controller (moves camera along flight path)
     cameraController.update(deltaTime);
+
+    // Update bullet avatar position to follow the same path
+    bulletAvatar.update(cameraController.getCurrentZ());
 
     // Update beat detection
     updateBeatDetection();

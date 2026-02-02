@@ -4,6 +4,14 @@ import { FlightPath } from './flightPath';
 // Default base speed (units per second)
 const DEFAULT_BASE_SPEED = 50;
 
+// Perspective modes
+export type PerspectiveMode = 'first-person' | 'third-person';
+
+// Third-person camera offset (relative to bullet position)
+const THIRD_PERSON_OFFSET = new THREE.Vector3(0, 15, -40); // Behind and above
+const TRANSITION_DURATION = 0.8; // Smooth transition time in seconds
+const THIRD_PERSON_DURATION = 6; // How long to stay in third-person (seconds)
+
 /**
  * CameraController manages camera movement along a flight path.
  * The camera follows a smooth spline curve through the city.
@@ -14,6 +22,16 @@ export class CameraController {
   private currentZ: number;
   private baseSpeed: number;
   private currentSpeed: number;
+
+  // Perspective switching state
+  private perspectiveMode: PerspectiveMode = 'first-person';
+  private perspectiveTransitionProgress: number = 1; // 0 = transitioning, 1 = complete
+  private thirdPersonTimer: number = 0;
+  private isTransitioning: boolean = false;
+  private targetPerspective: PerspectiveMode = 'first-person';
+
+  // Callbacks for perspective changes
+  private perspectiveChangeCallbacks: ((mode: PerspectiveMode) => void)[] = [];
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -81,6 +99,24 @@ export class CameraController {
     // Extend the path if needed
     this.flightPath.extendIfNeeded(this.currentZ);
 
+    // Handle perspective transition animation
+    if (this.isTransitioning) {
+      this.perspectiveTransitionProgress += deltaTime / TRANSITION_DURATION;
+      if (this.perspectiveTransitionProgress >= 1) {
+        this.perspectiveTransitionProgress = 1;
+        this.isTransitioning = false;
+        this.perspectiveMode = this.targetPerspective;
+      }
+    }
+
+    // Handle third-person auto-return timer
+    if (this.perspectiveMode === 'third-person' && !this.isTransitioning) {
+      this.thirdPersonTimer += deltaTime;
+      if (this.thirdPersonTimer >= THIRD_PERSON_DURATION) {
+        this.switchToFirstPerson();
+      }
+    }
+
     // Update camera position and orientation
     this.updateCameraPosition();
   }
@@ -89,20 +125,56 @@ export class CameraController {
    * Update camera position and look direction based on current Z
    */
   private updateCameraPosition(): void {
-    // Get position and tangent from the flight path
-    const position = this.flightPath.getPositionAtZ(this.currentZ);
+    // Get position and tangent from the flight path (bullet position)
+    const bulletPosition = this.flightPath.getPositionAtZ(this.currentZ);
     const tangent = this.flightPath.getTangentAtZ(this.currentZ);
 
-    // Set camera position
-    this.camera.position.copy(position);
+    // Calculate first-person position (directly on bullet)
+    const firstPersonPos = bulletPosition.clone();
 
-    // Look in the direction of travel
-    // Create a look-at target point ahead of the camera
-    const lookTarget = new THREE.Vector3()
-      .copy(position)
-      .add(tangent.multiplyScalar(100));
+    // Calculate third-person position (behind and above)
+    // Transform offset based on bullet's direction
+    const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
+
+    const thirdPersonPos = bulletPosition.clone()
+      .add(tangent.clone().multiplyScalar(THIRD_PERSON_OFFSET.z))
+      .add(up.clone().multiplyScalar(THIRD_PERSON_OFFSET.y))
+      .add(right.clone().multiplyScalar(THIRD_PERSON_OFFSET.x));
+
+    // Calculate interpolation factor based on transition progress
+    // Use smoothstep for more natural easing
+    const t = this.smoothstep(this.perspectiveTransitionProgress);
+
+    // Determine interpolation direction
+    let interpFactor: number;
+    if (this.targetPerspective === 'third-person') {
+      interpFactor = t;
+    } else {
+      interpFactor = 1 - t;
+    }
+
+    // Interpolate camera position
+    this.camera.position.lerpVectors(firstPersonPos, thirdPersonPos, interpFactor);
+
+    // Look at bullet in third-person, look forward in first-person
+    const firstPersonLookTarget = bulletPosition.clone().add(tangent.clone().multiplyScalar(100));
+    const thirdPersonLookTarget = bulletPosition.clone();
+
+    const lookTarget = new THREE.Vector3().lerpVectors(
+      firstPersonLookTarget,
+      thirdPersonLookTarget,
+      interpFactor
+    );
 
     this.camera.lookAt(lookTarget);
+  }
+
+  /**
+   * Smoothstep function for smooth easing
+   */
+  private smoothstep(t: number): number {
+    return t * t * (3 - 2 * t);
   }
 
   /**
@@ -124,5 +196,77 @@ export class CameraController {
    */
   public getFlightPath(): FlightPath {
     return this.flightPath;
+  }
+
+  /**
+   * Switch to third-person perspective
+   * Starts a smooth transition animation
+   */
+  public switchToThirdPerson(): void {
+    if (this.perspectiveMode === 'third-person' && !this.isTransitioning) {
+      // Already in third-person, just reset timer
+      this.thirdPersonTimer = 0;
+      return;
+    }
+
+    this.targetPerspective = 'third-person';
+    this.isTransitioning = true;
+    this.perspectiveTransitionProgress = 0;
+    this.thirdPersonTimer = 0;
+
+    // Notify listeners
+    for (const callback of this.perspectiveChangeCallbacks) {
+      callback('third-person');
+    }
+  }
+
+  /**
+   * Switch to first-person perspective
+   * Starts a smooth transition animation
+   */
+  public switchToFirstPerson(): void {
+    if (this.perspectiveMode === 'first-person' && !this.isTransitioning) {
+      return; // Already in first-person
+    }
+
+    this.targetPerspective = 'first-person';
+    this.isTransitioning = true;
+    this.perspectiveTransitionProgress = 0;
+
+    // Notify listeners
+    for (const callback of this.perspectiveChangeCallbacks) {
+      callback('first-person');
+    }
+  }
+
+  /**
+   * Get current perspective mode
+   */
+  public getPerspectiveMode(): PerspectiveMode {
+    return this.perspectiveMode;
+  }
+
+  /**
+   * Check if camera is currently in third-person or transitioning to it
+   */
+  public isThirdPerson(): boolean {
+    return this.perspectiveMode === 'third-person' ||
+      (this.isTransitioning && this.targetPerspective === 'third-person');
+  }
+
+  /**
+   * Subscribe to perspective change events
+   */
+  public onPerspectiveChange(callback: (mode: PerspectiveMode) => void): void {
+    this.perspectiveChangeCallbacks.push(callback);
+  }
+
+  /**
+   * Unsubscribe from perspective change events
+   */
+  public offPerspectiveChange(callback: (mode: PerspectiveMode) => void): void {
+    this.perspectiveChangeCallbacks = this.perspectiveChangeCallbacks.filter(
+      cb => cb !== callback
+    );
   }
 }
