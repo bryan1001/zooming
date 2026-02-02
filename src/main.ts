@@ -5,7 +5,7 @@ import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
 import { BulletAvatar } from './camera/bulletAvatar';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
-import { updateBeatDetection, onBeat, onTransition } from './audio/beatDetector';
+import { updateBeatDetection, onBeat, onTransition, onHeavyBeatShift } from './audio/beatDetector';
 import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
 import { initMotionBlur, updateMotionBlur, renderWithMotionBlur, resizeMotionBlur } from './effects/motionBlur';
 import { initStats, statsBegin, statsEnd } from './performance/stats';
@@ -66,6 +66,35 @@ onTransition((intensity) => {
   if (intensity > 0.3) {
     cameraController.switchToThirdPerson();
   }
+});
+
+// Track last turn direction for alternation when both directions are safe
+let lastTurnDirection: 'left' | 'right' = 'right'; // Start with 'right' so first turn is 'left'
+
+// Heavy beat shift callback - trigger turns on musically significant moments
+onHeavyBeatShift(() => {
+  // Check which directions are safe
+  const leftSafe = cameraController.canTurnSafely('left');
+  const rightSafe = cameraController.canTurnSafely('right');
+
+  if (leftSafe && rightSafe) {
+    // Both directions are safe - alternate
+    const direction = lastTurnDirection === 'left' ? 'right' : 'left';
+    if (cameraController.executeTurn(direction)) {
+      lastTurnDirection = direction;
+    }
+  } else if (leftSafe) {
+    // Only left is safe
+    if (cameraController.executeTurn('left')) {
+      lastTurnDirection = 'left';
+    }
+  } else if (rightSafe) {
+    // Only right is safe
+    if (cameraController.executeTurn('right')) {
+      lastTurnDirection = 'right';
+    }
+  }
+  // If neither is safe, skip the turn (maintain straight flight)
 });
 
 // Speed boost configuration for beat sync
