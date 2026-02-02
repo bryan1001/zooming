@@ -59,6 +59,10 @@
 - Use setPositionProvider() on TurnController to enable obstacle detection
 - getBankAngle() in TurnController returns current camera roll for banking effect (50 degrees max)
 - Banking has 3 phases: anticipation (50ms before turn), turning (full bank), follow-through (100ms after)
+- COLOR_PALETTES array has 4 palettes: 'cool-blue', 'warm-amber', 'neutral-gray', 'neon-accent'
+- Use (gridX * 3 + gridZ) % 4 for palette selection (different formula than window patterns for variety)
+- getMaterialKey(patternIndex, paletteIndex) converts 2D indices to flat array index for 16 material variants
+- Material properties vary by palette: metalness 0.1-0.5, roughness 0.3-0.8
 
 ---
 
@@ -155,5 +159,41 @@
   - With 4 patterns, using `(gridX + gridZ * 2) % 4` creates a varied pattern where neighbors always differ
   - Cache keys must include all parameters that affect texture output (seed + pattern)
   - Use type-only imports for TypeScript types when verbatimModuleSyntax is enabled
+---
+
+## 2026-02-02 - US-007
+- Increased building height and width variation in both building.ts and instancedBuildings.ts
+- Height range updated from 10-100 to weighted distribution:
+  - 5% skyscrapers: 150-250 units
+  - 5% tall: 100-150 units
+  - 30% short: 15-50 units
+  - 60% medium: 50-100 units
+- Width/depth range updated from 5-20 to 8-30 units
+- Added `selectHeightCategory()` function for weighted random selection
+- Added `generateBuildingHeight()` function to encapsulate height generation logic
+- Added HEIGHT_RANGES constant object for category definitions
+- Files changed: src/city/building.ts, src/city/instancedBuildings.ts
+- **Learnings for future iterations:**
+  - Use weighted distribution with threshold-based selection for non-uniform randomness
+  - Building.ts and instancedBuildings.ts both need the same dimension logic (keep in sync)
+  - HEIGHT_RANGES object pattern provides clear, maintainable category definitions
+---
+
+## 2026-02-02 - US-008
+- Added 4 color palettes for building variety: cool-blue, warm-amber, neutral-gray, neon-accent
+- Created ColorPalette type and COLOR_PALETTES array for palette management
+- Implemented getPaletteColors() function returning wall, roof, and accent colors per palette
+- Added material variation with getMaterialProperties(): metalness 0.1-0.5, roughness 0.3-0.8
+- Each palette has characteristic material properties (e.g., cool-blue is more metallic, warm-amber is rougher)
+- Updated material system from 4 to 16 variants (4 window patterns × 4 color palettes)
+- Buildings select palettes using grid position: (gridX * 3 + gridZ) % 4 to ensure adjacent buildings differ
+- Palette selection uses different formula than window pattern to maximize visual variety
+- All palettes maintain dark nighttime aesthetic with subtle hue variations
+- Files changed: src/city/instancedBuildings.ts
+- **Learnings for future iterations:**
+  - Use getMaterialKey(patternIndex, paletteIndex) to convert 2D indices to flat material array index
+  - Wall color applied via MeshStandardMaterial.color property alongside map/emissiveMap
+  - Palette colors are subtle in nighttime scene - emissive windows dominate, but wall differences visible between windows
+  - Using different grid-based formulas for pattern vs palette ensures maximum adjacent building variety
 ---
 
