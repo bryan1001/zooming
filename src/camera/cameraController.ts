@@ -50,8 +50,18 @@ export class CameraController {
     this.baseSpeed = DEFAULT_BASE_SPEED;
     this.currentSpeed = this.baseSpeed;
 
+    // Set position provider for obstacle detection
+    this.turnController.setPositionProvider(() => this.getBulletPosition());
+
     // Initialize camera position on the path
     this.updateCameraPosition();
+  }
+
+  /**
+   * Get the current bullet/flight position (not camera position, which may be offset in third-person)
+   */
+  private getBulletPosition(): THREE.Vector3 {
+    return this.flightPath.getPositionAtDistance(this.currentDistance);
   }
 
   /**
@@ -299,6 +309,15 @@ export class CameraController {
    */
   public executeTurn(direction: TurnDirection): boolean {
     return this.turnController.executeTurn(direction);
+  }
+
+  /**
+   * Check if turning in the given direction is safe (no collisions).
+   * @param direction 'left' or 'right'
+   * @returns true if the turn is safe, false if buildings are in the way
+   */
+  public canTurnSafely(direction: TurnDirection): boolean {
+    return this.turnController.canTurnSafely(direction);
   }
 
   /**
