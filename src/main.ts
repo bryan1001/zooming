@@ -34,9 +34,15 @@ const chunkManager = new ChunkManager(scene);
 // Initialize camera controller for smooth path following
 const cameraController = new CameraController(camera);
 
-// Beat detection callback for verification
+// Speed boost configuration for beat sync
+const MIN_SPEED_BOOST = 1.5; // 50% boost at minimum intensity
+const MAX_SPEED_BOOST = 2.0; // 100% boost at maximum intensity
+
+// Beat detection callback - boost camera speed on beat
 onBeat((intensity) => {
-  console.log(`BEAT! intensity: ${intensity.toFixed(2)}`);
+  // Calculate boost multiplier: lerp between MIN and MAX based on intensity
+  const boostMultiplier = MIN_SPEED_BOOST + (MAX_SPEED_BOOST - MIN_SPEED_BOOST) * intensity;
+  cameraController.boostSpeed(boostMultiplier);
 });
 
 // Handle window resize
@@ -61,6 +67,12 @@ function animate() {
 
   // Only update camera when started
   if (started) {
+    // Smoothly ease camera speed back to base speed
+    // Factor based on deltaTime for frame-rate independence
+    // ~200ms return time: e^(-3 * deltaTime) gives smooth decay
+    const easeFactor = 1 - Math.exp(-15 * deltaTime);
+    cameraController.easeToBaseSpeed(easeFactor);
+
     // Update camera controller (moves camera along flight path)
     cameraController.update(deltaTime);
 
