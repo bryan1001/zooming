@@ -7,6 +7,9 @@
 - Use seeded random (mulberry32) for reproducible procedural generation
 - Run `npm run typecheck` to verify TypeScript passes
 - CHUNK_SIZE is 200 units (exported from chunk.ts), use for chunk management calculations
+- ChunkManager handles dynamic chunk loading/unloading based on camera position
+- Use deltaTime pattern: const delta = (performance.now() - lastTime) / 1000 for frame-rate independent updates
+- Dispose geometry/materials when removing objects: mesh.geometry.dispose(); mesh.material.dispose()
 
 ---
 
@@ -61,4 +64,26 @@
   - Use hashPosition() pattern to generate unique seeds from world coordinates
   - Store chunk identification in Group.userData for later management
   - Grid layout: blocksPerSide = floor(CHUNK_SIZE / BLOCK_SIZE) = 8 buildings per axis
+---
+
+## 2026-02-02 - US-004
+- What was implemented:
+  - Created src/city/chunkManager.ts module with ChunkManager class
+  - Tracks loaded chunks in a Map using "chunkX,chunkZ" keys
+  - Generates chunks 3 ahead of camera and keeps 2 behind in Z direction
+  - Loads chunks laterally (2 on each side) for visibility
+  - Removes chunks beyond view and disposes of geometry/materials to free memory
+  - Updated main.ts to use ChunkManager and enable camera movement
+  - Camera positioned at street level (y=30) moving forward at 50 units/sec
+  - Increased far plane to 2000 for distant chunk visibility
+- Files changed:
+  - src/city/chunkManager.ts (new file - chunk loading/unloading manager)
+  - src/main.ts (integrated ChunkManager, removed demo cube, added camera movement)
+- **Learnings for future iterations:**
+  - Use Map with string keys for chunk tracking (e.g., "chunkX,chunkZ")
+  - worldToChunk: Math.floor(worldPos / CHUNK_SIZE) converts world to chunk coords
+  - Dispose geometry and materials when removing chunks to prevent memory leaks
+  - Use performance.now() and deltaTime for frame-rate independent movement
+  - Camera far plane needs to be large enough to see distant chunks (2000+ units)
+  - Camera y=30 provides good street-level view of buildings
 ---

@@ -65,7 +65,7 @@
         "Verify in browser - city extends as camera moves forward"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
