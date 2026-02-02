@@ -15,10 +15,46 @@ function seededRandom(seed: number): () => number {
 }
 
 // Building dimension ranges
-const MIN_HEIGHT = 10;
-const MAX_HEIGHT = 100;
-const MIN_WIDTH = 5;
-const MAX_WIDTH = 20;
+const MIN_WIDTH = 8;
+const MAX_WIDTH = 30;
+
+// Height ranges for different building categories
+const HEIGHT_RANGES = {
+  short: { min: 15, max: 50 },      // 30% of buildings
+  medium: { min: 50, max: 100 },    // 60% of buildings
+  tall: { min: 100, max: 150 },     // 10% of buildings (5% tall + 5% skyscraper base)
+  skyscraper: { min: 150, max: 250 }, // 5% of buildings (super tall)
+};
+
+/**
+ * Selects a building height category based on weighted distribution
+ * 60% medium, 30% short, 10% tall (includes 5% skyscrapers)
+ */
+function selectHeightCategory(random: () => number): keyof typeof HEIGHT_RANGES {
+  const roll = random();
+  if (roll < 0.05) {
+    // 5% chance: skyscraper (150-250 units)
+    return 'skyscraper';
+  } else if (roll < 0.10) {
+    // 5% chance: tall (100-150 units)
+    return 'tall';
+  } else if (roll < 0.40) {
+    // 30% chance: short (15-50 units)
+    return 'short';
+  } else {
+    // 60% chance: medium (50-100 units)
+    return 'medium';
+  }
+}
+
+/**
+ * Generates a building height based on weighted distribution
+ */
+function generateBuildingHeight(random: () => number): number {
+  const category = selectHeightCategory(random);
+  const range = HEIGHT_RANGES[category];
+  return range.min + random() * (range.max - range.min);
+}
 
 // Shared unit box geometry (1x1x1) that will be scaled per-instance
 let sharedGeometry: THREE.BoxGeometry | null = null;
@@ -127,7 +163,7 @@ export function generateBuildingData(
 ): BuildingData[] {
   return positions.map(({ x, z, seed }) => {
     const random = seededRandom(seed);
-    const height = MIN_HEIGHT + random() * (MAX_HEIGHT - MIN_HEIGHT);
+    const height = generateBuildingHeight(random);
     const width = MIN_WIDTH + random() * (MAX_WIDTH - MIN_WIDTH);
     const depth = MIN_WIDTH + random() * (MAX_WIDTH - MIN_WIDTH);
 
