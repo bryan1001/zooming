@@ -12,9 +12,13 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-// Texture cache to avoid recreating textures
-const textureCache = new Map<number, THREE.CanvasTexture>();
-const emissiveCache = new Map<number, THREE.CanvasTexture>();
+// Window pattern types
+export type WindowPattern = 'grid' | 'staggered' | 'vertical-strips' | 'sparse-random';
+export const WINDOW_PATTERNS: WindowPattern[] = ['grid', 'staggered', 'vertical-strips', 'sparse-random'];
+
+// Texture cache to avoid recreating textures - keyed by seed and pattern
+const textureCache = new Map<string, THREE.CanvasTexture>();
+const emissiveCache = new Map<string, THREE.CanvasTexture>();
 
 // Window grid constants
 const TEXTURE_SIZE = 256;
@@ -31,18 +35,57 @@ const LIT_WINDOW_COLORS = ['#ffe4a8', '#ffd080', '#ffcc66', '#e6c078'];
 const DARK_WINDOW_COLOR = '#0a0a14';
 
 /**
+ * Determines if a window should exist at a given position based on pattern
+ */
+function shouldHaveWindow(
+  row: number,
+  col: number,
+  pattern: WindowPattern,
+  random: () => number
+): boolean {
+  switch (pattern) {
+    case 'grid':
+      // Regular grid - every position has a window
+      return true;
+
+    case 'staggered':
+      // Offset every other row by half a column
+      // Skip windows in odd rows at even columns (creates staggered effect)
+      if (row % 2 === 1) {
+        return col % 2 === 1;
+      }
+      return col % 2 === 0;
+
+    case 'vertical-strips':
+      // Windows only in certain columns (creates vertical strip pattern)
+      // Windows in columns 0-1, 4-5 (skip 2-3, 6-7)
+      return col % 4 < 2;
+
+    case 'sparse-random':
+      // Random sparse distribution - only 40% of positions have windows
+      return random() < 0.4;
+
+    default:
+      return true;
+  }
+}
+
+/**
  * Creates a canvas-based window grid texture for a building
  * @param seed - Seed for random window lighting pattern
  * @param litProbability - Probability that a window is lit (0-1)
+ * @param pattern - Window pattern type (grid, staggered, vertical-strips, sparse-random)
  * @returns Object with color texture and emissive texture
  */
 export function createWindowTextures(
   seed: number,
-  litProbability: number = 0.4
+  litProbability: number = 0.4,
+  pattern: WindowPattern = 'grid'
 ): { colorTexture: THREE.CanvasTexture; emissiveTexture: THREE.CanvasTexture } {
-  // Check cache first
-  const cachedColor = textureCache.get(seed);
-  const cachedEmissive = emissiveCache.get(seed);
+  // Check cache first - key includes both seed and pattern
+  const cacheKey = `${seed}_${pattern}`;
+  const cachedColor = textureCache.get(cacheKey);
+  const cachedEmissive = emissiveCache.get(cacheKey);
   if (cachedColor && cachedEmissive) {
     return { colorTexture: cachedColor, emissiveTexture: cachedEmissive };
   }
@@ -69,13 +112,24 @@ export function createWindowTextures(
   emissiveCtx.fillStyle = '#000000';
   emissiveCtx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
 
-  // Draw windows
+  // Draw windows based on pattern
   for (let row = 0; row < WINDOWS_PER_COL; row++) {
     for (let col = 0; col < WINDOWS_PER_ROW; col++) {
-      const x = col * WINDOW_WIDTH + WINDOW_PADDING;
+      // Check if window should exist at this position based on pattern
+      if (!shouldHaveWindow(row, col, pattern, random)) {
+        continue;
+      }
+
+      // Calculate window position (for staggered pattern, offset odd rows)
+      let x = col * WINDOW_WIDTH + WINDOW_PADDING;
       const y = row * WINDOW_HEIGHT + WINDOW_PADDING;
       const w = WINDOW_WIDTH - WINDOW_PADDING * 2;
       const h = WINDOW_HEIGHT - WINDOW_PADDING * 2;
+
+      // For staggered pattern, offset the x position of odd rows
+      if (pattern === 'staggered' && row % 2 === 1) {
+        x += WINDOW_WIDTH / 2;
+      }
 
       const isLit = random() < litProbability;
 
@@ -120,10 +174,39 @@ export function createWindowTextures(
   emissiveTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
   // Cache the textures
-  textureCache.set(seed, colorTexture);
-  emissiveCache.set(seed, emissiveTexture);
+  textureCache.set(cacheKey, colorTexture);
+  emissiveCache.set(cacheKey, emissiveTexture);
 
   return { colorTexture, emissiveTexture };
+}
+
+/**
+ * Selects a window pattern based on seed, ensuring adjacent buildings get different patterns
+ * Uses the seed to pick from available patterns in a way that neighboring seeds differ
+ */
+export function selectWindowPattern(seed: number, neighborSeeds: number[] = []): WindowPattern {
+  // Get patterns used by neighbors
+  const neighborPatterns = new Set(
+    neighborSeeds.map((s) => WINDOW_PATTERNS[s % WINDOW_PATTERNS.length])
+  );
+
+  // Try to pick a pattern that's different from neighbors
+  const preferredPattern = WINDOW_PATTERNS[seed % WINDOW_PATTERNS.length];
+
+  if (!neighborPatterns.has(preferredPattern)) {
+    return preferredPattern;
+  }
+
+  // If preferred pattern is used by neighbor, find an alternative
+  for (let i = 1; i < WINDOW_PATTERNS.length; i++) {
+    const altPattern = WINDOW_PATTERNS[(seed + i) % WINDOW_PATTERNS.length];
+    if (!neighborPatterns.has(altPattern)) {
+      return altPattern;
+    }
+  }
+
+  // Fallback to preferred pattern if all patterns are used by neighbors
+  return preferredPattern;
 }
 
 /**

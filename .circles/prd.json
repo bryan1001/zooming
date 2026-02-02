@@ -83,7 +83,7 @@
         "Verify in browser using dev-browser skill - visible camera tilt during turns"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -98,7 +98,7 @@
         "Verify in browser using dev-browser skill - buildings show varied window patterns"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

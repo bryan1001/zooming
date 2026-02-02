@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createWindowTextures } from './windowTexture';
+import { createWindowTextures, WINDOW_PATTERNS } from './windowTexture';
+import type { WindowPattern } from './windowTexture';
 
 /**
  * Simple seeded random number generator (mulberry32)
@@ -22,8 +23,8 @@ const MAX_WIDTH = 20;
 // Shared unit box geometry (1x1x1) that will be scaled per-instance
 let sharedGeometry: THREE.BoxGeometry | null = null;
 
-// Shared materials - use fewer variants for fewer draw calls
-const MATERIAL_VARIANTS = 2;
+// Shared materials - one variant per window pattern (4 patterns)
+const MATERIAL_VARIANTS = WINDOW_PATTERNS.length;
 let sharedMaterials: THREE.MeshStandardMaterial[][] | null = null;
 
 function getSharedGeometry(): THREE.BoxGeometry {
@@ -36,10 +37,12 @@ function getSharedGeometry(): THREE.BoxGeometry {
 function getSharedMaterials(): THREE.MeshStandardMaterial[][] {
   if (!sharedMaterials) {
     sharedMaterials = [];
+    // Create one material set per window pattern
     for (let i = 0; i < MATERIAL_VARIANTS; i++) {
       const seed = i * 12345;
+      const pattern: WindowPattern = WINDOW_PATTERNS[i];
       const litProbability = 0.3 + (i / MATERIAL_VARIANTS) * 0.3;
-      const { colorTexture, emissiveTexture } = createWindowTextures(seed, litProbability);
+      const { colorTexture, emissiveTexture } = createWindowTextures(seed, litProbability, pattern);
 
       // Set initial repeat - will be adjusted per building with instance attributes
       colorTexture.repeat.set(2, 8);
@@ -112,8 +115,12 @@ export interface BuildingData {
   materialIndex: number;
 }
 
+// BLOCK_SIZE from chunk.ts - used for grid position calculation
+const BLOCK_SIZE = 25;
+
 /**
  * Generates building data for a set of positions
+ * Ensures adjacent buildings in the grid have different window patterns
  */
 export function generateBuildingData(
   positions: Array<{ x: number; z: number; seed: number }>
@@ -123,7 +130,18 @@ export function generateBuildingData(
     const height = MIN_HEIGHT + random() * (MAX_HEIGHT - MIN_HEIGHT);
     const width = MIN_WIDTH + random() * (MAX_WIDTH - MIN_WIDTH);
     const depth = MIN_WIDTH + random() * (MAX_WIDTH - MIN_WIDTH);
-    const materialIndex = Math.floor(random() * MATERIAL_VARIANTS);
+
+    // Calculate grid position (integer grid coordinates)
+    // Buildings are centered at (n * BLOCK_SIZE + BLOCK_SIZE/2), so divide and floor
+    const gridX = Math.floor(x / BLOCK_SIZE);
+    const gridZ = Math.floor(z / BLOCK_SIZE);
+
+    // Use grid position to ensure adjacent buildings get different patterns
+    // With 4 patterns and using (gridX + gridZ * 2) % 4, we get:
+    // - Horizontally adjacent buildings differ (gridX changes by 1 -> pattern changes by 1)
+    // - Vertically adjacent buildings differ (gridZ changes by 1 -> pattern changes by 2)
+    // This creates a varied pattern across the grid where no two adjacent buildings share the same pattern
+    const materialIndex = Math.abs((gridX + gridZ * 2) % MATERIAL_VARIANTS);
 
     return { x, z, width, height, depth, materialIndex };
   });

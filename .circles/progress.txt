@@ -32,7 +32,9 @@
 - initBeatEffects(camera) in src/effects/beatEffects.ts, then call triggerBeatPulse(intensity) on beat and updateBeatEffects(deltaTime) each frame
 - For multi-material meshes (e.g., different textures per face), use array of materials: new THREE.Mesh(geometry, materials[])
 - BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
-- createWindowTextures(seed, litProbability) in src/city/windowTexture.ts returns colorTexture and emissiveTexture
+- createWindowTextures(seed, litProbability, pattern) in src/city/windowTexture.ts returns colorTexture and emissiveTexture
+- WINDOW_PATTERNS array has 4 patterns: 'grid', 'staggered', 'vertical-strips', 'sparse-random'
+- Use (gridX + gridZ * 2) % 4 to ensure adjacent buildings have different window patterns
 - onTransition(callback) in beatDetector.ts for major musical transitions (drops/breakdowns), debounced to 8 seconds
 - BulletAvatar class in src/camera/bulletAvatar.ts for third-person view, takes (scene, flightPath) constructor args
 - Use CapsuleGeometry for elongated glowing objects, rotateX(Math.PI/2) to align with Z-axis
@@ -55,6 +57,8 @@
 - Buildings are at block centers: (n * BLOCK_SIZE + BLOCK_SIZE/2, *, m * BLOCK_SIZE + BLOCK_SIZE/2)
 - Streets run at multiples of BLOCK_SIZE
 - Use setPositionProvider() on TurnController to enable obstacle detection
+- getBankAngle() in TurnController returns current camera roll for banking effect (50 degrees max)
+- Banking has 3 phases: anticipation (50ms before turn), turning (full bank), follow-through (100ms after)
 
 ---
 
@@ -116,5 +120,40 @@
   - Track last turn direction as module-level state for alternation logic
   - `executeTurn()` returns boolean indicating if turn started (useful for updating state)
   - Heavy beat shifts are already debounced (2 seconds), no additional debouncing needed
+---
+
+## 2026-02-02 - US-005
+- Added dramatic banking animation to turns in TurnController
+- Banking state machine with 3 phases: anticipation (50ms), turning, follow-through (100ms)
+- Bank angle reaches 50 degrees (BANK_ANGLE_DEGREES constant)
+- Added `getBankAngle()` method to TurnController that returns current roll in radians
+- CameraController applies banking via `camera.rotateZ(bankAngle)` after lookAt
+- Uses ease-in-out cubic easing for smooth banking transitions
+- Files changed: src/camera/turnController.ts, src/camera/cameraController.ts
+- **Learnings for future iterations:**
+  - Use a state machine for multi-phase animations (anticipation → action → follow-through)
+  - Apply rotateZ after lookAt to avoid coordinate conflicts
+  - Bank into the turn direction (left turn = negative roll, right turn = positive roll)
+  - Animation is fast (~275ms total), so visual verification requires multiple screenshot attempts or GIF recording
+---
+
+## 2026-02-02 - US-006
+- Added 4 distinct window patterns to windowTexture.ts: grid, staggered, vertical-strips, sparse-random
+- Created `shouldHaveWindow()` function that determines window placement based on pattern type
+- Grid: regular windows at every position
+- Staggered: offset odd rows, creates brick-like arrangement
+- Vertical-strips: windows only in columns 0-1 and 4-5 (skip 2-3 and 6-7)
+- Sparse-random: 40% random window placement
+- Updated `createWindowTextures()` to accept optional pattern parameter
+- Updated texture cache to key by both seed and pattern
+- Updated instancedBuildings.ts to create 4 material variants (one per pattern)
+- Buildings select pattern based on grid position: `(gridX + gridZ * 2) % 4`
+- This ensures horizontally/vertically adjacent buildings always have different patterns
+- Files changed: src/city/windowTexture.ts, src/city/instancedBuildings.ts
+- **Learnings for future iterations:**
+  - Use grid position for pattern selection, not random seed, to guarantee adjacency difference
+  - With 4 patterns, using `(gridX + gridZ * 2) % 4` creates a varied pattern where neighbors always differ
+  - Cache keys must include all parameters that affect texture output (seed + pattern)
+  - Use type-only imports for TypeScript types when verbatimModuleSyntax is enabled
 ---
 
