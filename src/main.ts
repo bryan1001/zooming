@@ -1,5 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
+import { ChunkManager } from './city/chunkManager';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -13,28 +14,30 @@ const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
   0.1,
-  1000
+  2000
 );
-camera.position.z = 5;
+// Position camera at street level, looking forward (positive Z)
+camera.position.set(0, 30, 0);
+camera.lookAt(0, 30, 100);
 
 // Create renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Create a cube
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshStandardMaterial({ color: 0x6c63ff });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
 // Add lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(5, 5, 5);
+directionalLight.position.set(5, 50, 5);
 scene.add(directionalLight);
+
+// Initialize ChunkManager for infinite city
+const chunkManager = new ChunkManager(scene);
+
+// Camera movement speed (units per second)
+const cameraSpeed = 50;
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -43,13 +46,26 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Track time for smooth movement
+let lastTime = performance.now();
+
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
 
-  // Rotate the cube
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
+  // Calculate delta time for smooth movement
+  const currentTime = performance.now();
+  const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+  lastTime = currentTime;
+
+  // Move camera forward (positive Z direction)
+  camera.position.z += cameraSpeed * deltaTime;
+
+  // Keep camera looking forward
+  camera.lookAt(camera.position.x, camera.position.y, camera.position.z + 100);
+
+  // Update chunk manager to load/unload chunks as camera moves
+  chunkManager.update(camera.position);
 
   renderer.render(scene, camera);
 }
