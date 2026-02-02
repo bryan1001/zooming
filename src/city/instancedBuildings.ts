@@ -14,6 +14,95 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+/**
+ * Color palettes for building variety
+ * Each palette maintains the nighttime aesthetic with different hues
+ */
+export type ColorPalette = 'cool-blue' | 'warm-amber' | 'neutral-gray' | 'neon-accent';
+export const COLOR_PALETTES: ColorPalette[] = ['cool-blue', 'warm-amber', 'neutral-gray', 'neon-accent'];
+
+interface PaletteColors {
+  wall: number;       // Main wall color (dark for nighttime)
+  roof: number;       // Roof/base color
+  accent: number;     // Window frame accent color
+}
+
+/**
+ * Returns the colors for a given palette
+ * All palettes maintain the dark nighttime aesthetic with subtle hue variations
+ */
+function getPaletteColors(palette: ColorPalette): PaletteColors {
+  switch (palette) {
+    case 'cool-blue':
+      return {
+        wall: 0x151525,    // Dark blue-tinted wall
+        roof: 0x1a1a2e,    // Blue-tinted roof
+        accent: 0x2a3040,  // Cool accent
+      };
+    case 'warm-amber':
+      return {
+        wall: 0x1a1815,    // Dark warm wall
+        roof: 0x252018,    // Warm roof
+        accent: 0x3a3025,  // Warm accent
+      };
+    case 'neutral-gray':
+      return {
+        wall: 0x1a1a1a,    // Pure dark gray wall
+        roof: 0x202020,    // Gray roof
+        accent: 0x2a2a2a,  // Gray accent
+      };
+    case 'neon-accent':
+      return {
+        wall: 0x12151a,    // Very dark wall for contrast
+        roof: 0x181c22,    // Dark blue-gray roof
+        accent: 0x252a35,  // Slightly lighter accent
+      };
+  }
+}
+
+/**
+ * Material property ranges for variation
+ * Metalness: 0.1-0.5, Roughness: 0.3-0.8
+ */
+interface MaterialProperties {
+  metalness: number;
+  roughness: number;
+}
+
+/**
+ * Generates material properties based on palette type and random seed
+ */
+function getMaterialProperties(palette: ColorPalette, random: () => number): MaterialProperties {
+  // Base ranges: metalness 0.1-0.5, roughness 0.3-0.8
+  let metalness: number;
+  let roughness: number;
+
+  switch (palette) {
+    case 'cool-blue':
+      // More metallic, less rough (glass/steel buildings)
+      metalness = 0.3 + random() * 0.2;   // 0.3-0.5
+      roughness = 0.3 + random() * 0.2;   // 0.3-0.5
+      break;
+    case 'warm-amber':
+      // Less metallic, more rough (brick/stone buildings)
+      metalness = 0.1 + random() * 0.15;  // 0.1-0.25
+      roughness = 0.5 + random() * 0.3;   // 0.5-0.8
+      break;
+    case 'neutral-gray':
+      // Moderate both (concrete buildings)
+      metalness = 0.15 + random() * 0.2;  // 0.15-0.35
+      roughness = 0.4 + random() * 0.3;   // 0.4-0.7
+      break;
+    case 'neon-accent':
+      // High metalness, low roughness (modern glass/metal)
+      metalness = 0.35 + random() * 0.15; // 0.35-0.5
+      roughness = 0.3 + random() * 0.15;  // 0.3-0.45
+      break;
+  }
+
+  return { metalness, roughness };
+}
+
 // Building dimension ranges
 const MIN_WIDTH = 8;
 const MAX_WIDTH = 30;
@@ -59,8 +148,13 @@ function generateBuildingHeight(random: () => number): number {
 // Shared unit box geometry (1x1x1) that will be scaled per-instance
 let sharedGeometry: THREE.BoxGeometry | null = null;
 
-// Shared materials - one variant per window pattern (4 patterns)
-const MATERIAL_VARIANTS = WINDOW_PATTERNS.length;
+// Shared materials - one variant per window pattern x color palette combination (4 x 4 = 16)
+const MATERIAL_VARIANTS = WINDOW_PATTERNS.length * COLOR_PALETTES.length;
+// Map from (patternIndex, paletteIndex) to material array index
+function getMaterialKey(patternIndex: number, paletteIndex: number): number {
+  return patternIndex * COLOR_PALETTES.length + paletteIndex;
+}
+
 let sharedMaterials: THREE.MeshStandardMaterial[][] | null = null;
 
 function getSharedGeometry(): THREE.BoxGeometry {
@@ -73,70 +167,84 @@ function getSharedGeometry(): THREE.BoxGeometry {
 function getSharedMaterials(): THREE.MeshStandardMaterial[][] {
   if (!sharedMaterials) {
     sharedMaterials = [];
-    // Create one material set per window pattern
-    for (let i = 0; i < MATERIAL_VARIANTS; i++) {
-      const seed = i * 12345;
-      const pattern: WindowPattern = WINDOW_PATTERNS[i];
-      const litProbability = 0.3 + (i / MATERIAL_VARIANTS) * 0.3;
-      const { colorTexture, emissiveTexture } = createWindowTextures(seed, litProbability, pattern);
 
-      // Set initial repeat - will be adjusted per building with instance attributes
-      colorTexture.repeat.set(2, 8);
-      emissiveTexture.repeat.set(2, 8);
+    // Create material set for each pattern x palette combination
+    for (let patternIdx = 0; patternIdx < WINDOW_PATTERNS.length; patternIdx++) {
+      for (let paletteIdx = 0; paletteIdx < COLOR_PALETTES.length; paletteIdx++) {
+        const seed = patternIdx * 12345 + paletteIdx * 1000;
+        const pattern: WindowPattern = WINDOW_PATTERNS[patternIdx];
+        const palette = COLOR_PALETTES[paletteIdx];
+        const paletteColors = getPaletteColors(palette);
 
-      // Create materials for each face
-      const materials: THREE.MeshStandardMaterial[] = [
-        // Right face (+X)
-        new THREE.MeshStandardMaterial({
-          map: colorTexture.clone(),
-          emissiveMap: emissiveTexture.clone(),
-          emissive: 0xffffff,
-          emissiveIntensity: 0.8,
-          roughness: 0.7,
-          metalness: 0.1,
-        }),
-        // Left face (-X)
-        new THREE.MeshStandardMaterial({
-          map: colorTexture.clone(),
-          emissiveMap: emissiveTexture.clone(),
-          emissive: 0xffffff,
-          emissiveIntensity: 0.8,
-          roughness: 0.7,
-          metalness: 0.1,
-        }),
-        // Top face (+Y) - roof, no windows
-        new THREE.MeshStandardMaterial({
-          color: 0x1a1a2a,
-          roughness: 0.9,
-          metalness: 0.1,
-        }),
-        // Bottom face (-Y) - base, no windows
-        new THREE.MeshStandardMaterial({
-          color: 0x1a1a2a,
-          roughness: 0.9,
-          metalness: 0.1,
-        }),
-        // Front face (+Z)
-        new THREE.MeshStandardMaterial({
-          map: colorTexture.clone(),
-          emissiveMap: emissiveTexture.clone(),
-          emissive: 0xffffff,
-          emissiveIntensity: 0.8,
-          roughness: 0.7,
-          metalness: 0.1,
-        }),
-        // Back face (-Z)
-        new THREE.MeshStandardMaterial({
-          map: colorTexture.clone(),
-          emissiveMap: emissiveTexture.clone(),
-          emissive: 0xffffff,
-          emissiveIntensity: 0.8,
-          roughness: 0.7,
-          metalness: 0.1,
-        }),
-      ];
+        const litProbability = 0.3 + (patternIdx / WINDOW_PATTERNS.length) * 0.3;
+        const { colorTexture, emissiveTexture } = createWindowTextures(seed, litProbability, pattern);
 
-      sharedMaterials.push(materials);
+        // Set initial repeat - will be adjusted per building with instance attributes
+        colorTexture.repeat.set(2, 8);
+        emissiveTexture.repeat.set(2, 8);
+
+        // Get material properties for this palette (using seed-based random)
+        const matRandom = seededRandom(seed + 5000);
+        const matProps = getMaterialProperties(palette, matRandom);
+
+        // Create materials for each face with palette-specific colors
+        const materials: THREE.MeshStandardMaterial[] = [
+          // Right face (+X)
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.wall,
+            map: colorTexture.clone(),
+            emissiveMap: emissiveTexture.clone(),
+            emissive: 0xffffff,
+            emissiveIntensity: 0.8,
+            roughness: matProps.roughness,
+            metalness: matProps.metalness,
+          }),
+          // Left face (-X)
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.wall,
+            map: colorTexture.clone(),
+            emissiveMap: emissiveTexture.clone(),
+            emissive: 0xffffff,
+            emissiveIntensity: 0.8,
+            roughness: matProps.roughness,
+            metalness: matProps.metalness,
+          }),
+          // Top face (+Y) - roof, no windows
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.roof,
+            roughness: 0.9,
+            metalness: matProps.metalness * 0.5,
+          }),
+          // Bottom face (-Y) - base, no windows
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.roof,
+            roughness: 0.9,
+            metalness: matProps.metalness * 0.5,
+          }),
+          // Front face (+Z)
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.wall,
+            map: colorTexture.clone(),
+            emissiveMap: emissiveTexture.clone(),
+            emissive: 0xffffff,
+            emissiveIntensity: 0.8,
+            roughness: matProps.roughness,
+            metalness: matProps.metalness,
+          }),
+          // Back face (-Z)
+          new THREE.MeshStandardMaterial({
+            color: paletteColors.wall,
+            map: colorTexture.clone(),
+            emissiveMap: emissiveTexture.clone(),
+            emissive: 0xffffff,
+            emissiveIntensity: 0.8,
+            roughness: matProps.roughness,
+            metalness: matProps.metalness,
+          }),
+        ];
+
+        sharedMaterials.push(materials);
+      }
     }
   }
   return sharedMaterials;
@@ -149,6 +257,9 @@ export interface BuildingData {
   height: number;
   depth: number;
   materialIndex: number;
+  palette: ColorPalette;
+  metalness: number;
+  roughness: number;
 }
 
 // BLOCK_SIZE from chunk.ts - used for grid position calculation
@@ -156,7 +267,7 @@ const BLOCK_SIZE = 25;
 
 /**
  * Generates building data for a set of positions
- * Ensures adjacent buildings in the grid have different window patterns
+ * Ensures adjacent buildings in the grid have different window patterns AND colors
  */
 export function generateBuildingData(
   positions: Array<{ x: number; z: number; seed: number }>
@@ -172,14 +283,30 @@ export function generateBuildingData(
     const gridX = Math.floor(x / BLOCK_SIZE);
     const gridZ = Math.floor(z / BLOCK_SIZE);
 
-    // Use grid position to ensure adjacent buildings get different patterns
+    // Use grid position to ensure adjacent buildings get different window patterns
     // With 4 patterns and using (gridX + gridZ * 2) % 4, we get:
     // - Horizontally adjacent buildings differ (gridX changes by 1 -> pattern changes by 1)
     // - Vertically adjacent buildings differ (gridZ changes by 1 -> pattern changes by 2)
-    // This creates a varied pattern across the grid where no two adjacent buildings share the same pattern
-    const materialIndex = Math.abs((gridX + gridZ * 2) % MATERIAL_VARIANTS);
+    const patternIndex = Math.abs((gridX + gridZ * 2) % WINDOW_PATTERNS.length);
 
-    return { x, z, width, height, depth, materialIndex };
+    // Use different offset for palette to ensure color differs from window pattern
+    // Using (gridX * 3 + gridZ) % 4 creates a different pattern than window selection
+    // This ensures adjacent buildings have different colors even if they might share pattern index
+    const paletteIndex = Math.abs((gridX * 3 + gridZ) % COLOR_PALETTES.length);
+    const palette = COLOR_PALETTES[paletteIndex];
+
+    // Calculate combined material index for the pattern x palette combination
+    const materialIndex = getMaterialKey(patternIndex, paletteIndex);
+
+    // Generate material properties based on palette and seed
+    const materialProps = getMaterialProperties(palette, random);
+
+    return {
+      x, z, width, height, depth, materialIndex,
+      palette,
+      metalness: materialProps.metalness,
+      roughness: materialProps.roughness,
+    };
   });
 }
 
