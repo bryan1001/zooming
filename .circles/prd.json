@@ -216,7 +216,7 @@
         "Verify in browser - buildings have visible lit windows"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -232,7 +232,7 @@
         "Verify in browser - streets visible between buildings"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

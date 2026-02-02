@@ -30,6 +30,9 @@
 - Effects modules go in src/effects/ directory
 - Use CSS vignette overlay (radial-gradient) for screen darkening effects, pointer-events: none to not block clicks
 - initBeatEffects(camera) in src/effects/beatEffects.ts, then call triggerBeatPulse(intensity) on beat and updateBeatEffects(deltaTime) each frame
+- For multi-material meshes (e.g., different textures per face), use array of materials: new THREE.Mesh(geometry, materials[])
+- BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
+- createWindowTextures(seed, litProbability) in src/city/windowTexture.ts returns colorTexture and emissiveTexture
 
 ---
 
@@ -271,4 +274,45 @@
   - FOV changes require camera.updateProjectionMatrix() after modification
   - Exponential decay with k=12-15 provides smooth ~200ms visual transitions
   - Keep effects subtle to avoid motion sickness: MAX_FOV_PULSE=8, MAX_VIGNETTE=0.4
+---
+
+## 2026-02-02 - US-013
+- What was implemented:
+  - Created src/city/windowTexture.ts module for procedural window texture generation
+  - Uses HTML Canvas to draw window grids with lit/dark windows
+  - Creates both color texture and emissive texture for window glow effect
+  - Updated building.ts to use multi-material approach (6 materials for BoxGeometry faces)
+  - Window textures applied to front, back, left, right faces; roof/bottom use plain material
+  - UV repeat calculated based on building dimensions for consistent window sizes
+  - Texture caching to avoid recreating textures for same seed
+- Files changed:
+  - src/city/windowTexture.ts (new file - procedural window texture generator)
+  - src/city/building.ts (updated to use window textures with multi-material)
+- **Learnings for future iterations:**
+  - BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
+  - Use array of materials for multi-material meshes: new THREE.Mesh(geometry, materials[])
+  - CanvasTexture from canvas element works well for procedural textures
+  - Set texture.wrapS/wrapT = THREE.RepeatWrapping for tiling, use repeat.set() for scaling
+  - Clone textures when different faces need different repeat values
+  - emissiveMap with emissive=0xffffff and emissiveIntensity creates glowing effect
+  - Texture caching (Map<seed, texture>) prevents redundant texture generation
+---
+
+## 2026-02-02 - US-014
+- What was implemented:
+  - Created src/city/ground.ts module for procedural street ground plane
+  - Ground plane at y=0 with dark asphalt color (0x1a1a1a)
+  - Procedural street texture using canvas with grid lines between blocks
+  - Street center dashed lines for visual detail
+  - Ground plane added to each chunk, extends with chunk loading
+  - Updated chunkManager.ts to properly dispose material arrays
+- Files changed:
+  - src/city/ground.ts (new file - ground plane with street texture)
+  - src/city/chunk.ts (imports and adds ground to each chunk)
+  - src/city/chunkManager.ts (fixed material disposal for arrays)
+- **Learnings for future iterations:**
+  - PlaneGeometry is vertical by default, use rotateX(-Math.PI/2) to make horizontal
+  - Cache shared textures (like street texture) to avoid recreating on every chunk
+  - When disposing materials, check if Array.isArray(material) for multi-material meshes
+  - Ground at y=0, camera at y=30 gives good visibility of streets at building bases
 ---

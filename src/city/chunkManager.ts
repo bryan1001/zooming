@@ -65,7 +65,9 @@ export class ChunkManager {
       chunk.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           object.geometry.dispose();
-          if (object.material instanceof THREE.Material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach((mat) => mat.dispose());
+          } else if (object.material instanceof THREE.Material) {
             object.material.dispose();
           }
         }

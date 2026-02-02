@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createBuilding } from './building';
+import { createGround } from './ground';
 
 // Chunk size in world units
 export const CHUNK_SIZE = 200;
@@ -44,6 +45,10 @@ export function createChunk(chunkX: number, chunkZ: number): THREE.Group {
       chunk.add(building);
     }
   }
+
+  // Add ground plane to the chunk
+  const ground = createGround(chunkX, chunkZ);
+  chunk.add(ground);
 
   // Store chunk coordinates for identification
   chunk.userData = { chunkX, chunkZ };
