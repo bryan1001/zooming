@@ -117,6 +117,9 @@ export function createGround(chunkX: number, chunkZ: number): THREE.Mesh {
 
   const ground = new THREE.Mesh(geometry, material);
 
+  // Enable frustum culling for performance
+  ground.frustumCulled = true;
+
   // Position ground at center of chunk at y=0
   const worldX = chunkX * CHUNK_SIZE + CHUNK_SIZE / 2;
   const worldZ = chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 // Radial motion blur shader - creates speed lines effect emanating from center
 const RadialBlurShader = {
@@ -10,7 +11,7 @@ const RadialBlurShader = {
     strength: { value: 0.0 },
     centerX: { value: 0.5 },
     centerY: { value: 0.5 },
-    samples: { value: 16 }
+    samples: { value: 8 } // Reduced from 16 for performance
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -39,8 +40,8 @@ const RadialBlurShader = {
       vec4 color = vec4(0.0);
       float totalWeight = 0.0;
 
-      // Sample along radial direction
-      for (int i = 0; i < 16; i++) {
+      // Sample along radial direction (max 8 samples for performance)
+      for (int i = 0; i < 8; i++) {
         if (i >= samples) break;
         float t = float(i) / float(samples - 1) - 0.5;
         vec2 offset = dir * t * blurAmount;
@@ -57,6 +58,7 @@ const RadialBlurShader = {
 // Motion blur manager
 let composer: EffectComposer | null = null;
 let radialBlurPass: ShaderPass | null = null;
+let fxaaPass: ShaderPass | null = null;
 
 // Configuration
 const MIN_BLUR_SPEED = 50; // No blur below this speed
@@ -85,6 +87,13 @@ export function initMotionBlur(
   radialBlurPass = new ShaderPass(RadialBlurShader);
   radialBlurPass.uniforms.strength.value = 0;
   composer.addPass(radialBlurPass);
+
+  // Add FXAA pass for anti-aliasing (much faster than MSAA)
+  fxaaPass = new ShaderPass(FXAAShader);
+  const pixelRatio = renderer.getPixelRatio();
+  fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * pixelRatio);
+  fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * pixelRatio);
+  composer.addPass(fxaaPass);
 
   return composer;
 }
@@ -117,10 +126,15 @@ export function renderWithMotionBlur(): void {
  * Handle window resize
  * @param width New width
  * @param height New height
+ * @param pixelRatio Optional pixel ratio (defaults to 1)
  */
-export function resizeMotionBlur(width: number, height: number): void {
+export function resizeMotionBlur(width: number, height: number, pixelRatio: number = 1): void {
   if (composer) {
     composer.setSize(width, height);
+  }
+  if (fxaaPass) {
+    fxaaPass.material.uniforms['resolution'].value.x = 1 / (width * pixelRatio);
+    fxaaPass.material.uniforms['resolution'].value.y = 1 / (height * pixelRatio);
   }
 }
 

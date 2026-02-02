@@ -54,6 +54,8 @@ export class ChunkManager {
 
   /**
    * Unloads a chunk and removes it from the scene
+   * Note: For InstancedMesh, we don't dispose shared geometry/materials
+   * as they are reused across chunks. Only dispose per-chunk resources.
    */
   private unloadChunk(chunkX: number, chunkZ: number): void {
     const key = this.getChunkKey(chunkX, chunkZ);
@@ -61,9 +63,14 @@ export class ChunkManager {
 
     if (chunk) {
       this.scene.remove(chunk);
-      // Dispose of geometries and materials to free memory
+      // Dispose of per-chunk geometries and materials to free memory
+      // Note: InstancedMesh uses shared geometry/materials, so we skip those
       chunk.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
+        if (object instanceof THREE.InstancedMesh) {
+          // InstancedMesh uses shared resources, only dispose instance matrix
+          object.dispose();
+        } else if (object instanceof THREE.Mesh) {
+          // Regular meshes (like ground plane) - dispose normally
           object.geometry.dispose();
           if (Array.isArray(object.material)) {
             object.material.forEach((mat) => mat.dispose());

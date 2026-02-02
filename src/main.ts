@@ -8,6 +8,7 @@ import { initAudio, loadAudio, play } from './audio/audioPlayer';
 import { updateBeatDetection, onBeat, onTransition } from './audio/beatDetector';
 import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
 import { initMotionBlur, updateMotionBlur, renderWithMotionBlur, resizeMotionBlur } from './effects/motionBlur';
+import { initStats, statsBegin, statsEnd } from './performance/stats';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -23,10 +24,11 @@ const camera = new THREE.PerspectiveCamera(
   2000
 );
 
-// Create renderer
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// Create renderer (antialias disabled for performance - post-processing handles smoothing)
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Limit pixel ratio to 1.5 for better performance on high-DPI displays
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
 // Setup atmospheric night lighting
 setupLighting(scene);
@@ -45,6 +47,9 @@ const bulletAvatar = new BulletAvatar(scene, cameraController.getFlightPath());
 
 // Initialize beat effects for visual feedback
 initBeatEffects(camera);
+
+// Initialize FPS counter for performance monitoring
+initStats();
 
 // Listen for perspective changes to show/hide bullet avatar
 cameraController.onPerspectiveChange((mode) => {
@@ -82,7 +87,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  resizeMotionBlur(window.innerWidth, window.innerHeight);
+  resizeMotionBlur(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
 });
 
 // Track time for smooth movement
@@ -92,6 +97,9 @@ let started = false;
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
+
+  // Start frame timing
+  statsBegin();
 
   // Calculate delta time for smooth movement
   const currentTime = performance.now();
@@ -127,6 +135,9 @@ function animate() {
 
   // Render with motion blur post-processing
   renderWithMotionBlur();
+
+  // End frame timing
+  statsEnd();
 }
 
 // Handle start overlay click
