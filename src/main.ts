@@ -1,13 +1,13 @@
 import './style.css';
 import * as THREE from 'three';
 import { ChunkManager } from './city/chunkManager';
+import { setupLighting } from './lighting';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
 // Create scene
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e);
 
 // Create camera
 const camera = new THREE.PerspectiveCamera(
@@ -25,13 +25,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Add lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(5, 50, 5);
-scene.add(directionalLight);
+// Setup atmospheric night lighting
+setupLighting(scene);
 
 // Initialize ChunkManager for infinite city
 const chunkManager = new ChunkManager(scene);
