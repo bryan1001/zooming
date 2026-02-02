@@ -314,7 +314,7 @@
         "Verify in browser - fps stays at 60 during playback"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -331,7 +331,7 @@
         "Verify in browser - complete flow works end to end"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

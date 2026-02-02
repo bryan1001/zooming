@@ -38,7 +38,13 @@
 - Use CapsuleGeometry for elongated glowing objects, rotateX(Math.PI/2) to align with Z-axis
 - Post-processing: import from 'three/examples/jsm/postprocessing/', use EffectComposer with RenderPass + effect passes
 - initMotionBlur(renderer, scene, camera) returns composer, use renderWithMotionBlur() instead of renderer.render()
-- Call resizeMotionBlur(width, height) on window resize to update composer size
+- Call resizeMotionBlur(width, height, pixelRatio) on window resize to update composer size
+- Performance modules go in src/performance/ directory
+- Use stats.js for FPS monitoring: initStats(), statsBegin(), statsEnd()
+- InstancedMesh is more efficient than individual meshes: use for buildings in chunks
+- Disable WebGL antialias (false) and use FXAA post-processing pass instead for better performance
+- Limit pixel ratio to 1.5 for better performance on high-DPI displays
+- For InstancedMesh, dispose() only clears instance data; shared geometry/materials persist
 
 ---
 
@@ -402,4 +408,52 @@
   - Call composer.setSize() on window resize to match renderer size
   - Use renderWithMotionBlur() instead of renderer.render() when using composer
   - Keep MAX_BLUR_STRENGTH low (0.15) to avoid nausea while maintaining speed feel
+---
+
+## 2026-02-02 - US-019
+- What was implemented:
+  - Added stats.js FPS counter (src/performance/stats.ts)
+  - Created InstancedMesh system for buildings (src/city/instancedBuildings.ts)
+  - Updated chunk.ts to use InstancedMesh instead of individual building meshes
+  - Reduced material variants from 4 to 2 for fewer draw calls
+  - Reduced radial blur shader samples from 16 to 8
+  - Disabled WebGL antialiasing and added FXAA post-processing pass instead
+  - Limited pixel ratio to 1.5 for better performance on high-DPI displays
+  - Updated chunkManager.ts to properly dispose InstancedMesh
+  - Added frustumCulled = true explicitly to ground plane
+- Files changed:
+  - src/performance/stats.ts (new file - FPS counter)
+  - src/city/instancedBuildings.ts (new file - InstancedMesh building system)
+  - src/city/chunk.ts (refactored to use InstancedMesh)
+  - src/city/chunkManager.ts (updated disposal for InstancedMesh)
+  - src/city/ground.ts (added explicit frustum culling)
+  - src/effects/motionBlur.ts (added FXAA pass, reduced blur samples)
+  - src/main.ts (integrated stats, disabled antialias, limited pixel ratio)
+  - package.json (added stats.js dependency)
+- **Learnings for future iterations:**
+  - InstancedMesh uses shared geometry/materials - only dispose instance data per chunk
+  - FXAA is much faster than MSAA antialiasing for comparable quality
+  - Reducing shader sample count (16→8) significantly improves performance
+  - Pixel ratio limiting (1.5 instead of 2) helps on Retina displays
+  - Group buildings by material type to minimize draw calls with InstancedMesh
+  - Performance modules go in src/performance/ directory
+---
+
+## 2026-02-02 - US-020
+- What was implemented:
+  - Verified existing start screen implementation meets all acceptance criteria
+  - Start screen shows "ZOOMING" title with purple glow effect
+  - "Click anywhere to start" prompt with pulse animation
+  - Clicking starts audio playback and hides overlay with smooth fade transition
+  - Camera movement begins immediately after click
+  - Browser testing confirmed no console errors during full playback
+  - Experience runs cohesively at stable 60 FPS
+- Files changed:
+  - No code changes needed - existing implementation already satisfies all criteria
+  - .circles/prd.json (marked US-020 as passes: true)
+- **Learnings for future iterations:**
+  - The start-to-finish flow was already well-implemented in previous stories
+  - Always verify the full experience end-to-end before marking complete
+  - Browser testing is essential for frontend stories - use screenshots to verify
+  - FPS counter (stats.js) is valuable for confirming performance during testing
 ---
