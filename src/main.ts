@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { ChunkManager } from './city/chunkManager';
 import { setupLighting } from './lighting';
+import { CameraController } from './camera/cameraController';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -16,9 +17,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   2000
 );
-// Position camera at street level, looking forward (positive Z)
-camera.position.set(0, 30, 0);
-camera.lookAt(0, 30, 100);
 
 // Create renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -31,8 +29,8 @@ setupLighting(scene);
 // Initialize ChunkManager for infinite city
 const chunkManager = new ChunkManager(scene);
 
-// Camera movement speed (units per second)
-const cameraSpeed = 50;
+// Initialize camera controller for smooth path following
+const cameraController = new CameraController(camera);
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -53,11 +51,8 @@ function animate() {
   const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
   lastTime = currentTime;
 
-  // Move camera forward (positive Z direction)
-  camera.position.z += cameraSpeed * deltaTime;
-
-  // Keep camera looking forward
-  camera.lookAt(camera.position.x, camera.position.y, camera.position.z + 100);
+  // Update camera controller (moves camera along flight path)
+  cameraController.update(deltaTime);
 
   // Update chunk manager to load/unload chunks as camera moves
   chunkManager.update(camera.position);

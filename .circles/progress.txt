@@ -10,6 +10,13 @@
 - ChunkManager handles dynamic chunk loading/unloading based on camera position
 - Use deltaTime pattern: const delta = (performance.now() - lastTime) / 1000 for frame-rate independent updates
 - Dispose geometry/materials when removing objects: mesh.geometry.dispose(); mesh.material.dispose()
+- Scene-wide modules (lighting, etc.) go in src/ root, component-specific modules in subdirectories
+- setupLighting(scene) in src/lighting.ts handles all scene lighting configuration
+- Camera-related modules go in src/camera/ directory
+- FlightPath class generates CatmullRomCurve3 through streets, extends dynamically as camera moves
+- BLOCK_SIZE is 25 units (from chunk.ts), streets run at multiples of BLOCK_SIZE
+- FLIGHT_HEIGHT is 30 units (consistent with camera y position)
+- CameraController manages camera movement along FlightPath, use cameraController.update(deltaTime) each frame
 
 ---
 
@@ -86,4 +93,62 @@
   - Use performance.now() and deltaTime for frame-rate independent movement
   - Camera far plane needs to be large enough to see distant chunks (2000+ units)
   - Camera y=30 provides good street-level view of buildings
+---
+
+## 2026-02-02 - US-005
+- What was implemented:
+  - Created src/lighting.ts module with setupLighting function
+  - Dark blue/purple background (0x0a0a1a) for night sky
+  - Fog matching background color (100 to 800 units) for depth and atmosphere
+  - Ambient light (dim blue 0x2a2a4a, intensity 0.5)
+  - Directional moonlight (0x6a6a8a, intensity 0.8) from above
+  - Hemisphere light for natural ambient gradient (sky/ground colors)
+  - Updated main.ts to use new lighting module instead of inline lights
+- Files changed:
+  - src/lighting.ts (new file - atmospheric lighting setup)
+  - src/main.ts (replaced inline lighting with setupLighting call)
+- **Learnings for future iterations:**
+  - Lighting modules go in src/ root (not src/city/) since they're scene-wide
+  - Use fog to hide chunk loading and create depth perception
+  - Fog start/end values (100, 800) work well with CHUNK_SIZE of 200
+  - Hemisphere light adds natural ambient variation (brighter sky, darker ground)
+  - Blue/purple tones (0x2a2a4a) create night atmosphere without being too dark
+---
+
+## 2026-02-02 - US-006
+- What was implemented:
+  - Created src/camera/flightPath.ts module with FlightPath class
+  - Uses CatmullRomCurve3 for smooth path through the city
+  - Path points placed at street level (y=30), along street grid lines (multiples of BLOCK_SIZE)
+  - Dynamically extends path ahead as camera approaches end (EXTEND_THRESHOLD = 500 units)
+  - Exports getPositionAt(t), getTangentAt(t) for parametric access (0-1)
+  - Also exports getPositionAtZ(z), getTangentAtZ(z) for Z-based access
+  - Uses seeded random (mulberry32) for reproducible path variations
+- Files changed:
+  - src/camera/flightPath.ts (new file - spline-based flight path generator)
+- **Learnings for future iterations:**
+  - Camera modules go in src/camera/ directory
+  - Streets run at (n * BLOCK_SIZE) positions, buildings at (n * BLOCK_SIZE + BLOCK_SIZE/2)
+  - CatmullRomCurve3 provides getPointAt(t) and getTangentAt(t) for smooth interpolation
+  - extendIfNeeded(cameraZ) should be called each frame to extend path ahead of camera
+  - Path extends when within EXTEND_THRESHOLD (500 units) of the end
+---
+
+## 2026-02-02 - US-007
+- What was implemented:
+  - Created src/camera/cameraController.ts module with CameraController class
+  - Camera follows FlightPath spline at configurable base speed (default 50 units/sec)
+  - Camera looks in direction of travel using tangent from the path
+  - Exports update(deltaTime) method for frame-rate independent movement
+  - Exports setSpeed(speed), getSpeed(), boostSpeed(multiplier), easeToBaseSpeed(factor) methods for future beat sync
+  - Updated main.ts to use CameraController instead of inline camera movement
+- Files changed:
+  - src/camera/cameraController.ts (new file - camera movement along flight path)
+  - src/main.ts (integrated CameraController, removed inline camera movement)
+- **Learnings for future iterations:**
+  - CameraController wraps FlightPath and camera for unified movement control
+  - Use boostSpeed(multiplier) and easeToBaseSpeed(factor) for beat-synced speed changes
+  - Camera position and lookAt are updated via updateCameraPosition() internal method
+  - getCurrentZ() returns the Z position for chunk manager coordination
+  - All camera movement should go through CameraController.update(deltaTime)
 ---
