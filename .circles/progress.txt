@@ -1,0 +1,26 @@
+## Codebase Patterns
+- Canvas element is in index.html with id="canvas"
+- Three.js scene, camera, and renderer are initialized in src/main.ts
+- Styles go in src/style.css with fullscreen canvas setup
+- Use MeshStandardMaterial for objects that need lighting
+
+---
+
+## 2026-02-02 - US-001
+- What was implemented:
+  - Initialized Vite + TypeScript project
+  - Installed Three.js and @types/three
+  - Created index.html with canvas element
+  - Created main.ts with basic Three.js scene (rotating cube, lighting)
+  - Configured fullscreen canvas styling
+- Files changed:
+  - index.html (canvas element)
+  - src/main.ts (Three.js scene setup)
+  - src/style.css (fullscreen canvas styles)
+  - package.json (added three, @types/three)
+- **Learnings for future iterations:**
+  - Vite uses vanilla-ts template for TypeScript projects
+  - Three.js requires both three and @types/three packages
+  - Canvas needs display:block to prevent scrollbars
+  - MeshStandardMaterial requires lighting to be visible
+---
