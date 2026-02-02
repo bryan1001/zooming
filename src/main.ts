@@ -4,6 +4,7 @@ import { ChunkManager } from './city/chunkManager';
 import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
+import { updateBeatDetection, onBeat } from './audio/beatDetector';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -33,6 +34,11 @@ const chunkManager = new ChunkManager(scene);
 // Initialize camera controller for smooth path following
 const cameraController = new CameraController(camera);
 
+// Beat detection callback for verification
+onBeat((intensity) => {
+  console.log(`BEAT! intensity: ${intensity.toFixed(2)}`);
+});
+
 // Handle window resize
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -57,6 +63,9 @@ function animate() {
   if (started) {
     // Update camera controller (moves camera along flight path)
     cameraController.update(deltaTime);
+
+    // Update beat detection
+    updateBeatDetection();
   }
 
   // Update chunk manager to load/unload chunks as camera moves
