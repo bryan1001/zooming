@@ -25,6 +25,11 @@
 - Use getFrequencyData() for Uint8Array of frequency bins, getAverageFrequency() for quick energy reading
 - getFrequencyRangeAverage(startBin, endBin) isolates frequency bands (e.g., bass 0-10, mids 10-100)
 - FFT_SIZE is 2048, frequencyBinCount is 1024 (bins cover 0 to Nyquist frequency)
+- For beat-synced effects, use onBeat(callback) and scale effect by intensity (0-1)
+- Frame-rate independent smooth transitions: use exponential decay (1 - e^(-k*deltaTime)), k=15 for ~200ms
+- Effects modules go in src/effects/ directory
+- Use CSS vignette overlay (radial-gradient) for screen darkening effects, pointer-events: none to not block clicks
+- initBeatEffects(camera) in src/effects/beatEffects.ts, then call triggerBeatPulse(intensity) on beat and updateBeatEffects(deltaTime) each frame
 
 ---
 
@@ -202,4 +207,68 @@
   - Audio routing: sourceNode -> analyserNode -> audioContext.destination
   - smoothingTimeConstant (0.8) smooths frequency data over time for less jittery values
   - frequencyBinCount = fftSize / 2; each bin covers (sampleRate / fftSize) Hz
+- Beat detector uses updateBeatDetection() each frame and onBeat(callback) for subscriptions
+- For kick drum detection, analyze bins 2-8 (~60-150Hz with FFT_SIZE 2048, sampleRate 44100)
+- Beat threshold of 1.5x rolling average works well for detecting kicks
+---
+
+## 2026-02-02 - US-010
+- What was implemented:
+  - Created src/audio/beatDetector.ts module for beat detection
+  - Analyzes low frequency bands (kick drums ~60-150Hz)
+  - Compares current energy to rolling average (43 frames history)
+  - Triggers beat when energy exceeds 1.5x rolling average
+  - Minimum 100ms interval between beats to avoid double-triggers
+  - Exports onBeat(callback) for subscribing to beat events with intensity
+  - Exports getBeatIntensity() returning 0-1 value that decays between beats
+  - Added console.log in main.ts for verification
+  - Updated main.ts to call updateBeatDetection() in animation loop
+- Files changed:
+  - src/audio/beatDetector.ts (new file - beat detection algorithm)
+  - src/main.ts (integrated beat detector, added verification logging)
+- **Learnings for future iterations:**
+  - Beat detection requires calling updateBeatDetection() every frame
+  - Kick drums are typically 60-150Hz, convert to FFT bins: bin = freq * FFT_SIZE / sampleRate
+  - Rolling average history of ~1 second (43 frames at 60fps) provides good baseline
+  - Minimum beat interval (100ms) prevents false double-triggers
+  - Intensity calculated as how much energy exceeds threshold, normalized to 0-1
+  - offBeat(callback) available for cleanup when needed
+---
+
+## 2026-02-02 - US-011
+- What was implemented:
+  - Connected beatDetector to cameraController for beat-synced speed pulses
+  - On beat: boost camera speed by 50-100% based on beat intensity
+  - Speed boost calculated as: MIN_SPEED_BOOST + (MAX_SPEED_BOOST - MIN_SPEED_BOOST) * intensity
+  - Smoothly interpolates back to base speed using exponential decay (~200ms return time)
+  - Frame-rate independent using: easeFactor = 1 - Math.exp(-15 * deltaTime)
+  - Removed verification console.log, speed changes are now applied directly
+- Files changed:
+  - src/main.ts (beat callback now boosts camera speed, added easeToBaseSpeed in animation loop)
+- **Learnings for future iterations:**
+  - Use exponential decay (1 - e^(-k*dt)) for frame-rate independent smooth transitions
+  - k=15 gives approximately 200ms return time (95% decay)
+  - Speed boost multiplier: 1.5 = 50% boost, 2.0 = 100% boost
+  - easeToBaseSpeed() should be called every frame BEFORE cameraController.update()
+  - Beat intensity (0-1) can be used to scale visual/audio effects proportionally
+---
+
+## 2026-02-02 - US-012
+- What was implemented:
+  - Created src/effects/beatEffects.ts module for visual beat effects
+  - FOV pulse effect: increases FOV by up to 8 degrees on beat, decays smoothly
+  - Vignette darkening effect: CSS radial-gradient overlay darkens screen edges on beat
+  - Both effects scale with beat intensity (0-1)
+  - Uses exponential decay for smooth transitions (~200ms return time)
+  - Integrated into main.ts: initBeatEffects(camera), triggerBeatPulse(intensity), updateBeatEffects(deltaTime)
+- Files changed:
+  - src/effects/beatEffects.ts (new file - visual beat effects module)
+  - src/main.ts (integrated beat effects initialization and updates)
+- **Learnings for future iterations:**
+  - Effects modules go in src/effects/ directory
+  - Use CSS overlay with radial-gradient for vignette effects (performant, no WebGL overhead)
+  - pointer-events: none on overlays prevents blocking user interactions
+  - FOV changes require camera.updateProjectionMatrix() after modification
+  - Exponential decay with k=12-15 provides smooth ~200ms visual transitions
+  - Keep effects subtle to avoid motion sickness: MAX_FOV_PULSE=8, MAX_VIGNETTE=0.4
 ---

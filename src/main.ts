@@ -5,6 +5,7 @@ import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
 import { updateBeatDetection, onBeat } from './audio/beatDetector';
+import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
 
 // Get canvas element
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -34,15 +35,21 @@ const chunkManager = new ChunkManager(scene);
 // Initialize camera controller for smooth path following
 const cameraController = new CameraController(camera);
 
+// Initialize beat effects for visual feedback
+initBeatEffects(camera);
+
 // Speed boost configuration for beat sync
 const MIN_SPEED_BOOST = 1.5; // 50% boost at minimum intensity
 const MAX_SPEED_BOOST = 2.0; // 100% boost at maximum intensity
 
-// Beat detection callback - boost camera speed on beat
+// Beat detection callback - boost camera speed and trigger visual effects on beat
 onBeat((intensity) => {
   // Calculate boost multiplier: lerp between MIN and MAX based on intensity
   const boostMultiplier = MIN_SPEED_BOOST + (MAX_SPEED_BOOST - MIN_SPEED_BOOST) * intensity;
   cameraController.boostSpeed(boostMultiplier);
+
+  // Trigger visual beat effects (FOV pulse, vignette)
+  triggerBeatPulse(intensity);
 });
 
 // Handle window resize
@@ -78,6 +85,9 @@ function animate() {
 
     // Update beat detection
     updateBeatDetection();
+
+    // Update beat visual effects (FOV pulse, vignette decay)
+    updateBeatEffects(deltaTime);
   }
 
   // Update chunk manager to load/unload chunks as camera moves

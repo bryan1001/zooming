@@ -167,7 +167,7 @@
         "Verify - console.log fires in time with audible kicks"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -183,7 +183,7 @@
         "Verify in browser - visible speed pulses match the beat"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -200,7 +200,7 @@
         "Verify in browser - visual pulse visible on beats"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
