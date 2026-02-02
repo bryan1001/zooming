@@ -17,13 +17,21 @@ const TRANSITION_HISTORY_SIZE = 120; // ~2 seconds of history at 60fps
 const TRANSITION_THRESHOLD = 2.0; // Energy change must be this factor greater than short-term average
 const MIN_TRANSITION_INTERVAL_MS = 8000; // Max 1 transition per 8 seconds (debounce)
 
+// Heavy beat shift detection configuration
+const HEAVY_BEAT_THRESHOLD = 2.5; // Energy must exceed rolling average by this factor (vs 1.5x for regular)
+const HEAVY_BEAT_PRE_SILENCE_FRAMES = 12; // ~200ms at 60fps to check for silence before spike
+const HEAVY_BEAT_LOW_ENERGY_FACTOR = 0.5; // Pre-spike energy must be below this factor of rolling average
+const MIN_HEAVY_BEAT_INTERVAL_MS = 2000; // Max 1 heavy beat shift per 2 seconds (debounce)
+
 // State
 let beatCallbacks: ((intensity: number) => void)[] = [];
 let transitionCallbacks: ((intensity: number) => void)[] = [];
+let heavyBeatShiftCallbacks: ((intensity: number) => void)[] = [];
 let energyHistory: number[] = [];
 let longTermEnergyHistory: number[] = []; // For transition detection (2 second window)
 let lastBeatTime = 0;
 let lastTransitionTime = 0;
+let lastHeavyBeatShiftTime = 0;
 let currentBeatIntensity = 0;
 
 /**
@@ -96,6 +104,77 @@ function getRecentAverage(): number {
 }
 
 /**
+ * Detect heavy beat shifts - musically significant moments characterized by
+ * an energy spike > 2.5x rolling average preceded by silence/low energy.
+ * Returns true if a heavy beat shift was detected.
+ */
+export function detectHeavyBeatShift(): boolean {
+  const currentEnergy = getKickEnergy();
+  const rollingAverage = getRollingAverage();
+
+  // Need enough history for comparison
+  if (energyHistory.length < HEAVY_BEAT_PRE_SILENCE_FRAMES + 5) {
+    return false;
+  }
+
+  const now = performance.now();
+  const timeSinceLastHeavyBeat = now - lastHeavyBeatShiftTime;
+
+  // Enforce debounce: max 1 heavy beat shift per 2 seconds
+  if (timeSinceLastHeavyBeat < MIN_HEAVY_BEAT_INTERVAL_MS) {
+    return false;
+  }
+
+  // Require minimum rolling average to avoid false positives during silence
+  if (rollingAverage < 10) {
+    return false;
+  }
+
+  // Check if current energy exceeds heavy beat threshold (2.5x rolling average)
+  if (currentEnergy <= rollingAverage * HEAVY_BEAT_THRESHOLD) {
+    return false;
+  }
+
+  // Check for silence or low energy in the 200ms before the spike
+  // Look at frames from -HEAVY_BEAT_PRE_SILENCE_FRAMES to -1 (before the current spike)
+  const preSilenceStartIndex = Math.max(0, energyHistory.length - HEAVY_BEAT_PRE_SILENCE_FRAMES - 1);
+  const preSilenceEndIndex = energyHistory.length - 1; // Don't include the very last frame (spike buildup)
+
+  let preSilenceSum = 0;
+  let preSilenceCount = 0;
+  for (let i = preSilenceStartIndex; i < preSilenceEndIndex; i++) {
+    preSilenceSum += energyHistory[i];
+    preSilenceCount++;
+  }
+
+  if (preSilenceCount === 0) {
+    return false;
+  }
+
+  const preSilenceAverage = preSilenceSum / preSilenceCount;
+  const lowEnergyThreshold = rollingAverage * HEAVY_BEAT_LOW_ENERGY_FACTOR;
+
+  // Pre-spike period must have low energy (below 0.5x rolling average)
+  if (preSilenceAverage >= lowEnergyThreshold) {
+    return false;
+  }
+
+  // Heavy beat shift detected!
+  lastHeavyBeatShiftTime = now;
+
+  // Calculate intensity based on how much we exceeded the threshold
+  const rawIntensity = (currentEnergy / (rollingAverage * HEAVY_BEAT_THRESHOLD)) - 1;
+  const intensity = Math.min(1, Math.max(0, rawIntensity * 2));
+
+  // Notify all subscribers
+  for (const callback of heavyBeatShiftCallbacks) {
+    callback(intensity);
+  }
+
+  return true;
+}
+
+/**
  * Update beat detection. Call this every frame.
  * Returns true if a beat was detected this frame.
  */
@@ -117,6 +196,9 @@ export function updateBeatDetection(): boolean {
 
   // Check for transitions (significant energy changes over 1-2 second window)
   checkForTransition();
+
+  // Check for heavy beat shifts (for turn triggers)
+  detectHeavyBeatShift();
 
   // Need enough history for comparison
   if (energyHistory.length < HISTORY_SIZE / 2) {
@@ -243,6 +325,24 @@ export function offTransition(callback: (intensity: number) => void): void {
 }
 
 /**
+ * Subscribe to heavy beat shift events.
+ * Heavy beat shifts are musically significant moments (energy spike > 2.5x average
+ * preceded by silence/low energy). Used to trigger dramatic turns.
+ * Callback receives the shift intensity (0-1).
+ * Heavy beat shifts are debounced to max 1 per 2 seconds.
+ */
+export function onHeavyBeatShift(callback: (intensity: number) => void): void {
+  heavyBeatShiftCallbacks.push(callback);
+}
+
+/**
+ * Unsubscribe from heavy beat shift events.
+ */
+export function offHeavyBeatShift(callback: (intensity: number) => void): void {
+  heavyBeatShiftCallbacks = heavyBeatShiftCallbacks.filter(cb => cb !== callback);
+}
+
+/**
  * Get the current beat intensity (0-1).
  * This value pulses high on beats and decays between them.
  */
@@ -259,5 +359,6 @@ export function resetBeatDetection(): void {
   longTermEnergyHistory = [];
   lastBeatTime = 0;
   lastTransitionTime = 0;
+  lastHeavyBeatShiftTime = 0;
   currentBeatIntensity = 0;
 }
