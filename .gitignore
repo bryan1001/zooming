@@ -1,3 +1,9 @@
+# Large asset files
+public/models/
+*.fbx
+*.zip
+*.tar.gz
+
 # Logs
 logs
 *.log

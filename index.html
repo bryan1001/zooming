@@ -8,10 +8,20 @@
   </head>
   <body>
     <canvas id="canvas"></canvas>
+    <div id="beat-indicator"></div>
     <div id="start-overlay">
       <div class="start-content">
         <h1>Zooming</h1>
-        <p>Click anywhere to start</p>
+        <p>Choose your audio source</p>
+        <div class="start-buttons">
+          <button id="start-builtin" class="start-btn">
+            🎵 Built-in Track
+          </button>
+          <button id="start-system" class="start-btn">
+            🔊 System Audio
+          </button>
+        </div>
+        <p class="start-hint">System Audio syncs to whatever is playing on your computer</p>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -8,9 +8,9 @@ import { getFrequencyData } from './audioAnalyser';
 import { getAudioContext } from './audioPlayer';
 
 // Beat detection configuration
-const BEAT_THRESHOLD = 1.5; // Energy must exceed rolling average by this factor
-const HISTORY_SIZE = 43; // ~1 second of history at 60fps (adjust based on frame rate)
-const MIN_BEAT_INTERVAL_MS = 100; // Minimum time between beats to avoid double-triggers
+const BEAT_THRESHOLD = 1.2; // Energy must exceed rolling average by this factor (lower = more sensitive)
+const HISTORY_SIZE = 30; // ~0.5 second of history at 60fps (shorter = more responsive)
+const MIN_BEAT_INTERVAL_MS = 80; // Minimum time between beats to avoid double-triggers
 
 // Transition detection configuration
 const TRANSITION_HISTORY_SIZE = 120; // ~2 seconds of history at 60fps
@@ -197,7 +197,7 @@ export function updateBeatDetection(): boolean {
   // Check for transitions (significant energy changes over 1-2 second window)
   checkForTransition();
 
-  // Check for heavy beat shifts (for turn triggers)
+  // Check for heavy beat shifts (for dramatic effects)
   detectHeavyBeatShift();
 
   // Need enough history for comparison
@@ -214,7 +214,7 @@ export function updateBeatDetection(): boolean {
   // 2. Enough time has passed since last beat
   // 3. Rolling average is not zero (audio is playing)
   if (
-    rollingAverage > 10 && // Minimum threshold to avoid false positives during silence
+    rollingAverage > 5 && // Minimum threshold to avoid false positives during silence
     currentEnergy > rollingAverage * BEAT_THRESHOLD &&
     timeSinceLastBeat > MIN_BEAT_INTERVAL_MS
   ) {
@@ -327,7 +327,7 @@ export function offTransition(callback: (intensity: number) => void): void {
 /**
  * Subscribe to heavy beat shift events.
  * Heavy beat shifts are musically significant moments (energy spike > 2.5x average
- * preceded by silence/low energy). Used to trigger dramatic turns.
+ * preceded by silence/low energy). Used to trigger dramatic visual effects.
  * Callback receives the shift intensity (0-1).
  * Heavy beat shifts are debounced to max 1 per 2 seconds.
  */

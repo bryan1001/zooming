@@ -1,13 +1,19 @@
 import * as THREE from 'three';
 
-// Block size from chunk.ts - buildings are at block centers
-const BLOCK_SIZE = 25;
+// Street and block layout configuration (must match chunk.ts)
+// Scaled 5x for massive buildings with extra wide streets
+const STREET_WIDTH = 180; // Extra wide streets for guaranteed clear flight
+const BUILDING_GAP = 30;
+const BUILDING_WIDTH = 100;
+const BUILDINGS_PER_BLOCK = 3;
 
-// Flight height (street level, above ground but below most buildings)
-const FLIGHT_HEIGHT = 30;
+// Derived values
+const CITY_BLOCK_SIZE = BUILDINGS_PER_BLOCK * BUILDING_WIDTH + (BUILDINGS_PER_BLOCK - 1) * BUILDING_GAP;
+const BLOCK_WITH_STREET = CITY_BLOCK_SIZE + STREET_WIDTH;
 
-// Distance between path control points
-const PATH_SEGMENT_LENGTH = 100;
+// Flight height (elevated above street furniture and low obstacles)
+// Scaled up for massive buildings
+const FLIGHT_HEIGHT = 60;
 
 // How far ahead to extend the path (in world units)
 const EXTEND_AHEAD_DISTANCE = 1000;
@@ -16,282 +22,188 @@ const EXTEND_AHEAD_DISTANCE = 1000;
 const EXTEND_THRESHOLD = 500;
 
 /**
- * FlightPath generates a smooth CatmullRomCurve3 path through the city streets.
- * Path extends dynamically as the camera approaches the end.
- * Supports directional flight with 90-degree turns.
+ * Calculate the center position of a street given its index
+ */
+function getStreetCenter(streetIndex: number): number {
+  return streetIndex * BLOCK_WITH_STREET + CITY_BLOCK_SIZE + STREET_WIDTH / 2;
+}
+
+/**
+ * FlightPath manages camera movement through city streets.
+ * Uses straight line segments between intersections.
  */
 export class FlightPath {
-  private curve: THREE.CatmullRomCurve3;
-  private controlPoints: THREE.Vector3[];
-  private lastZ: number; // Track the furthest Z point added (for backward compatibility)
-  private seed: number;
+  private controlPoints: THREE.Vector3[] = [];
+  private segmentLengths: number[] = []; // Length of each segment
+  private cumulativeDistances: number[] = []; // Cumulative distance to start of each segment
+  private totalLength: number = 0;
 
-  // Direction-aware path tracking
-  private flightAngle: number = 0; // Current flight direction in radians (0 = +Z)
-  private pathDistances: number[] = []; // Cumulative distances to each control point
+  // Direction tracking
+  private flightAngle: number = 0; // 0 = +Z, PI/2 = +X, PI = -Z, -PI/2 = -X
+  private currentStreetX: number = 0;
+  private currentStreetZ: number = 0;
 
   constructor() {
-    this.seed = 12345; // Deterministic seed for reproducible paths
-    this.controlPoints = [];
-    this.lastZ = 0;
-
-    // Initialize with starting points
     this.addInitialPoints();
-    this.curve = new THREE.CatmullRomCurve3(this.controlPoints);
-    this.updatePathDistances();
+    this.updateDistances();
   }
 
-  /**
-   * Add initial path points to get started
-   */
   private addInitialPoints(): void {
-    // Start at origin, at street level
-    const startX = 0;
+    this.currentStreetX = 0;
+    this.currentStreetZ = 0;
+    this.flightAngle = 0;
 
-    // Add several initial points going forward
-    for (let z = 0; z <= EXTEND_AHEAD_DISTANCE; z += PATH_SEGMENT_LENGTH) {
-      const point = this.generateStreetPoint(startX, z);
-      this.controlPoints.push(point);
-      this.lastZ = z;
+    const startX = getStreetCenter(this.currentStreetX);
+
+    // Add starting point
+    this.controlPoints.push(new THREE.Vector3(startX, FLIGHT_HEIGHT, getStreetCenter(this.currentStreetZ)));
+
+    // Add points ahead
+    const numPoints = Math.ceil(EXTEND_AHEAD_DISTANCE / BLOCK_WITH_STREET) + 1;
+    for (let i = 0; i < numPoints; i++) {
+      this.currentStreetZ++;
+      this.controlPoints.push(new THREE.Vector3(startX, FLIGHT_HEIGHT, getStreetCenter(this.currentStreetZ)));
     }
   }
 
-  /**
-   * Update cumulative path distances after adding points
-   */
-  private updatePathDistances(): void {
-    this.pathDistances = [0];
+  private updateDistances(): void {
+    this.segmentLengths = [];
+    this.cumulativeDistances = [0];
+
     for (let i = 1; i < this.controlPoints.length; i++) {
-      const dist = this.controlPoints[i].distanceTo(this.controlPoints[i - 1]);
-      this.pathDistances.push(this.pathDistances[i - 1] + dist);
-    }
-  }
-
-  /**
-   * Generate a point that lies on streets (not on buildings)
-   * Streets run between building blocks
-   */
-  private generateStreetPoint(hintX: number, z: number): THREE.Vector3 {
-    // Streets run along the edges of blocks, not through block centers
-    // Block centers are at (n * BLOCK_SIZE + BLOCK_SIZE/2) positions
-    // So streets are at (n * BLOCK_SIZE) positions
-
-    // Find nearest street X position (multiple of BLOCK_SIZE)
-    const streetX = Math.round(hintX / BLOCK_SIZE) * BLOCK_SIZE;
-
-    // Add some lateral variation to make the path more interesting
-    // Occasionally curve to a different parallel street
-    const random = this.seededRandom();
-    let x = streetX;
-
-    // 30% chance to curve to an adjacent street
-    if (random < 0.3) {
-      const direction = random < 0.15 ? -1 : 1;
-      x += direction * BLOCK_SIZE;
+      const len = this.controlPoints[i].distanceTo(this.controlPoints[i - 1]);
+      this.segmentLengths.push(len);
+      this.cumulativeDistances.push(this.cumulativeDistances[i - 1] + len);
     }
 
-    return new THREE.Vector3(x, FLIGHT_HEIGHT, z);
+    this.totalLength = this.cumulativeDistances[this.cumulativeDistances.length - 1] || 0;
   }
 
   /**
-   * Generate a point in the current flight direction
-   * Uses the flight angle to calculate the next point position
-   */
-  private generateDirectionalPoint(fromPoint: THREE.Vector3, distance: number): THREE.Vector3 {
-    // Calculate direction vector from flight angle
-    const direction = new THREE.Vector3(
-      Math.sin(this.flightAngle),
-      0,
-      Math.cos(this.flightAngle)
-    );
-
-    // Calculate new position
-    const newPoint = fromPoint.clone().add(direction.multiplyScalar(distance));
-
-    // Snap to street grid (perpendicular to flight direction)
-    // For simplicity, snap to nearest BLOCK_SIZE in both X and Z
-    newPoint.x = Math.round(newPoint.x / BLOCK_SIZE) * BLOCK_SIZE;
-    newPoint.z = Math.round(newPoint.z / BLOCK_SIZE) * BLOCK_SIZE;
-    newPoint.y = FLIGHT_HEIGHT;
-
-    return newPoint;
-  }
-
-  /**
-   * Simple seeded random number generator (0-1)
-   */
-  private seededRandom(): number {
-    // Mulberry32 PRNG
-    let t = (this.seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  }
-
-  /**
-   * Extend the path ahead if needed
-   * Call this each frame with current camera Z position
-   */
-  public extendIfNeeded(cameraZ: number): void {
-    // Check if we need to extend
-    const distanceToEnd = this.lastZ - cameraZ;
-
-    if (distanceToEnd < EXTEND_THRESHOLD) {
-      // Add more points in the current flight direction
-      for (let i = 0; i < 5; i++) {
-        const fromPoint = this.controlPoints[this.controlPoints.length - 1];
-        const newPoint = this.generateDirectionalPoint(fromPoint, PATH_SEGMENT_LENGTH);
-        this.controlPoints.push(newPoint);
-
-        // Update lastZ for backward compatibility (tracks furthest progress along Z)
-        this.lastZ = Math.max(this.lastZ, newPoint.z);
-      }
-
-      // Recreate curve with new points
-      this.curve = new THREE.CatmullRomCurve3(this.controlPoints);
-      this.updatePathDistances();
-    }
-  }
-
-  /**
-   * Set the flight direction and regenerate path ahead.
-   * Called after a turn completes.
-   * @param angle Flight angle in radians (0 = +Z, PI/2 = +X, etc.)
-   */
-  public setFlightDirection(angle: number): void {
-    this.flightAngle = angle;
-
-    // Regenerate points from the end of current known points in new direction
-    // Keep points that are behind or at the turn point
-    // For simplicity, regenerate the next several points in the new direction
-    for (let i = 0; i < 10; i++) {
-      const fromPoint = this.controlPoints[this.controlPoints.length - 1];
-      const newPoint = this.generateDirectionalPoint(fromPoint, PATH_SEGMENT_LENGTH);
-      this.controlPoints.push(newPoint);
-      this.lastZ = Math.max(this.lastZ, newPoint.z);
-    }
-
-    // Recreate curve with new points
-    this.curve = new THREE.CatmullRomCurve3(this.controlPoints);
-    this.updatePathDistances();
-  }
-
-  /**
-   * Get the current flight angle.
-   */
-  public getFlightAngle(): number {
-    return this.flightAngle;
-  }
-
-  /**
-   * Convert a Z position to a t value along the curve (0-1)
-   * Note: This only works accurately when traveling along the Z axis.
-   * After turns, use distanceToT for accurate positioning.
-   */
-  private zToT(z: number): number {
-    // Since our points are roughly evenly spaced along Z,
-    // we can approximate t based on Z position
-    const startZ = this.controlPoints[0].z;
-    const endZ = this.controlPoints[this.controlPoints.length - 1].z;
-    const t = (z - startZ) / (endZ - startZ);
-    return Math.max(0, Math.min(1, t));
-  }
-
-  /**
-   * Convert a distance along the path to a t value (0-1)
-   */
-  private distanceToT(distance: number): number {
-    const totalDistance = this.pathDistances[this.pathDistances.length - 1] || 1;
-    return Math.max(0, Math.min(1, distance / totalDistance));
-  }
-
-  /**
-   * Get position on the path based on distance traveled
+   * Get position at a given distance along the path
    */
   public getPositionAtDistance(distance: number): THREE.Vector3 {
-    const t = this.distanceToT(distance);
-    return this.getPositionAt(t);
+    if (distance <= 0) return this.controlPoints[0].clone();
+    if (distance >= this.totalLength) return this.controlPoints[this.controlPoints.length - 1].clone();
+
+    // Find which segment we're in
+    let segmentIndex = 0;
+    for (let i = 1; i < this.cumulativeDistances.length; i++) {
+      if (distance < this.cumulativeDistances[i]) {
+        segmentIndex = i - 1;
+        break;
+      }
+    }
+
+    // Interpolate within segment
+    const segmentStart = this.cumulativeDistances[segmentIndex];
+    const segmentLength = this.segmentLengths[segmentIndex];
+    const t = (distance - segmentStart) / segmentLength;
+
+    const p1 = this.controlPoints[segmentIndex];
+    const p2 = this.controlPoints[segmentIndex + 1];
+
+    return new THREE.Vector3().lerpVectors(p1, p2, t);
   }
 
   /**
-   * Get tangent on the path based on distance traveled
+   * Get direction at a given distance along the path
    */
   public getTangentAtDistance(distance: number): THREE.Vector3 {
-    const t = this.distanceToT(distance);
-    return this.getTangentAt(t);
+    if (this.controlPoints.length < 2) return new THREE.Vector3(0, 0, 1);
+
+    // Find which segment we're in
+    let segmentIndex = 0;
+    for (let i = 1; i < this.cumulativeDistances.length; i++) {
+      if (distance < this.cumulativeDistances[i]) {
+        segmentIndex = i - 1;
+        break;
+      }
+      segmentIndex = i - 1;
+    }
+
+    segmentIndex = Math.min(segmentIndex, this.controlPoints.length - 2);
+
+    const p1 = this.controlPoints[segmentIndex];
+    const p2 = this.controlPoints[segmentIndex + 1];
+
+    return new THREE.Vector3().subVectors(p2, p1).normalize();
   }
 
   /**
-   * Get the total length of the current path
+   * Get total path length
    */
   public getTotalDistance(): number {
-    return this.pathDistances[this.pathDistances.length - 1] || 0;
+    return this.totalLength;
   }
 
   /**
-   * Extend the path if needed based on current distance traveled
+   * Extend path if needed
    */
   public extendIfNeededByDistance(currentDistance: number): void {
-    const totalDistance = this.getTotalDistance();
-    const distanceToEnd = totalDistance - currentDistance;
+    const distanceToEnd = this.totalLength - currentDistance;
 
     if (distanceToEnd < EXTEND_THRESHOLD) {
-      // Add more points in the current flight direction
       for (let i = 0; i < 5; i++) {
-        const fromPoint = this.controlPoints[this.controlPoints.length - 1];
-        const newPoint = this.generateDirectionalPoint(fromPoint, PATH_SEGMENT_LENGTH);
+        const newPoint = this.generateNextPoint();
         this.controlPoints.push(newPoint);
-        this.lastZ = Math.max(this.lastZ, newPoint.z);
       }
-
-      // Recreate curve with new points
-      this.curve = new THREE.CatmullRomCurve3(this.controlPoints);
-      this.updatePathDistances();
+      this.updateDistances();
     }
   }
 
-  /**
-   * Get position on the path at a given t value (0-1)
-   */
-  public getPositionAt(t: number): THREE.Vector3 {
-    return this.curve.getPointAt(Math.max(0, Math.min(1, t)));
+  private generateNextPoint(): THREE.Vector3 {
+    // Move based on current flight angle
+    const angleNorm = ((this.flightAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+    if (angleNorm < Math.PI / 4 || angleNorm >= 7 * Math.PI / 4) {
+      this.currentStreetZ += 1; // +Z
+    } else if (angleNorm < 3 * Math.PI / 4) {
+      this.currentStreetX += 1; // +X
+    } else if (angleNorm < 5 * Math.PI / 4) {
+      this.currentStreetZ -= 1; // -Z
+    } else {
+      this.currentStreetX -= 1; // -X
+    }
+
+    return new THREE.Vector3(
+      getStreetCenter(this.currentStreetX),
+      FLIGHT_HEIGHT,
+      getStreetCenter(this.currentStreetZ)
+    );
   }
 
-  /**
-   * Get tangent (direction) on the path at a given t value (0-1)
-   */
-  public getTangentAt(t: number): THREE.Vector3 {
-    return this.curve.getTangentAt(Math.max(0, Math.min(1, t)));
-  }
-
-  /**
-   * Get position on the path based on Z coordinate
-   * This is more intuitive for the infinite scrolling city
-   */
+  // Legacy methods for bulletAvatar compatibility
   public getPositionAtZ(z: number): THREE.Vector3 {
-    const t = this.zToT(z);
-    return this.getPositionAt(t);
+    // Find closest point by Z
+    for (let i = 0; i < this.controlPoints.length - 1; i++) {
+      const p1 = this.controlPoints[i];
+      const p2 = this.controlPoints[i + 1];
+      if (z >= Math.min(p1.z, p2.z) && z <= Math.max(p1.z, p2.z)) {
+        if (p1.z === p2.z) return p1.clone();
+        const t = (z - p1.z) / (p2.z - p1.z);
+        return new THREE.Vector3().lerpVectors(p1, p2, t);
+      }
+    }
+    return this.controlPoints[0].clone();
   }
 
-  /**
-   * Get tangent on the path based on Z coordinate
-   */
   public getTangentAtZ(z: number): THREE.Vector3 {
-    const t = this.zToT(z);
-    return this.getTangentAt(t);
+    for (let i = 0; i < this.controlPoints.length - 1; i++) {
+      const p1 = this.controlPoints[i];
+      const p2 = this.controlPoints[i + 1];
+      if (z >= Math.min(p1.z, p2.z) && z <= Math.max(p1.z, p2.z)) {
+        return new THREE.Vector3().subVectors(p2, p1).normalize();
+      }
+    }
+    return new THREE.Vector3(0, 0, 1);
   }
 
-  /**
-   * Get the current path length
-   */
-  public getLength(): number {
-    return this.curve.getLength();
-  }
-
-  /**
-   * Get the curve for debugging/visualization
-   */
   public getCurve(): THREE.CatmullRomCurve3 {
-    return this.curve;
+    return new THREE.CatmullRomCurve3(this.controlPoints);
+  }
+
+  public getLength(): number {
+    return this.totalLength;
   }
 }

@@ -1,12 +1,14 @@
 import './style.css';
 import * as THREE from 'three';
-import { ChunkManager } from './city/chunkManager';
+import { ModelChunkManager } from './city/modelChunkManager';
 import { setupLighting } from './lighting';
 import { CameraController } from './camera/cameraController';
 import { BulletAvatar } from './camera/bulletAvatar';
 import { initAudio, loadAudio, play } from './audio/audioPlayer';
-import { updateBeatDetection, onBeat, onTransition, onHeavyBeatShift } from './audio/beatDetector';
+import { startSystemAudioCapture } from './audio/systemAudio';
+import { updateBeatDetection, onBeat, onTransition } from './audio/beatDetector';
 import { initBeatEffects, triggerBeatPulse, updateBeatEffects } from './effects/beatEffects';
+import { initBuildingPulse, triggerBuildingPulse, updateBuildingPulse } from './effects/buildingPulse';
 import { initMotionBlur, updateMotionBlur, renderWithMotionBlur, resizeMotionBlur } from './effects/motionBlur';
 import { initStats, statsBegin, statsEnd } from './performance/stats';
 
@@ -36,8 +38,8 @@ setupLighting(scene);
 // Initialize motion blur post-processing
 initMotionBlur(renderer, scene, camera);
 
-// Initialize ChunkManager for infinite city
-const chunkManager = new ChunkManager(scene);
+// Initialize ModelChunkManager for infinite city using glTF buildings
+const chunkManager = new ModelChunkManager(scene);
 
 // Initialize camera controller for smooth path following
 const cameraController = new CameraController(camera);
@@ -47,6 +49,9 @@ const bulletAvatar = new BulletAvatar(scene, cameraController.getFlightPath());
 
 // Initialize beat effects for visual feedback
 initBeatEffects(camera);
+
+// Initialize building pulse effect
+initBuildingPulse(scene);
 
 // Initialize FPS counter for performance monitoring
 initStats();
@@ -68,38 +73,13 @@ onTransition((intensity) => {
   }
 });
 
-// Track last turn direction for alternation when both directions are safe
-let lastTurnDirection: 'left' | 'right' = 'right'; // Start with 'right' so first turn is 'left'
+// Speed boost configuration for beat sync - arcade intensity!
+const MIN_SPEED_BOOST = 1.8; // 80% boost at minimum intensity
+const MAX_SPEED_BOOST = 2.5; // 150% boost at maximum intensity
 
-// Heavy beat shift callback - trigger turns on musically significant moments
-onHeavyBeatShift(() => {
-  // Check which directions are safe
-  const leftSafe = cameraController.canTurnSafely('left');
-  const rightSafe = cameraController.canTurnSafely('right');
-
-  if (leftSafe && rightSafe) {
-    // Both directions are safe - alternate
-    const direction = lastTurnDirection === 'left' ? 'right' : 'left';
-    if (cameraController.executeTurn(direction)) {
-      lastTurnDirection = direction;
-    }
-  } else if (leftSafe) {
-    // Only left is safe
-    if (cameraController.executeTurn('left')) {
-      lastTurnDirection = 'left';
-    }
-  } else if (rightSafe) {
-    // Only right is safe
-    if (cameraController.executeTurn('right')) {
-      lastTurnDirection = 'right';
-    }
-  }
-  // If neither is safe, skip the turn (maintain straight flight)
-});
-
-// Speed boost configuration for beat sync
-const MIN_SPEED_BOOST = 1.5; // 50% boost at minimum intensity
-const MAX_SPEED_BOOST = 2.0; // 100% boost at maximum intensity
+// Beat indicator element
+const beatIndicator = document.getElementById('beat-indicator');
+let beatIndicatorTimeout: number | null = null;
 
 // Beat detection callback - boost camera speed and trigger visual effects on beat
 onBeat((intensity) => {
@@ -109,6 +89,18 @@ onBeat((intensity) => {
 
   // Trigger visual beat effects (FOV pulse, vignette)
   triggerBeatPulse(intensity);
+  
+  // Trigger building pulse
+  triggerBuildingPulse(intensity);
+  
+  // Flash beat indicator green
+  if (beatIndicator) {
+    beatIndicator.classList.add('beat');
+    if (beatIndicatorTimeout) clearTimeout(beatIndicatorTimeout);
+    beatIndicatorTimeout = window.setTimeout(() => {
+      beatIndicator.classList.remove('beat');
+    }, 100);
+  }
 });
 
 // Handle window resize
@@ -117,16 +109,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   resizeMotionBlur(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
-});
-
-// Keyboard controls for testing turns
-window.addEventListener('keydown', (e) => {
-  if (!started) return;
-  if (e.key === 'ArrowLeft' || e.key === 'a') {
-    cameraController.executeTurn('left');
-  } else if (e.key === 'ArrowRight' || e.key === 'd') {
-    cameraController.executeTurn('right');
-  }
 });
 
 // Track time for smooth movement
@@ -164,6 +146,9 @@ function animate() {
 
     // Update beat visual effects (FOV pulse, vignette decay)
     updateBeatEffects(deltaTime);
+    
+    // Update building pulse effect
+    updateBuildingPulse(deltaTime);
 
     // Update motion blur intensity based on current speed
     updateMotionBlur(cameraController.getSpeed());
@@ -179,10 +164,12 @@ function animate() {
   statsEnd();
 }
 
-// Handle start overlay click
+// Handle start overlay buttons
 const startOverlay = document.getElementById('start-overlay');
+const startBuiltinBtn = document.getElementById('start-builtin');
+const startSystemBtn = document.getElementById('start-system');
 
-async function startExperience() {
+async function startWithBuiltinAudio() {
   if (started) return;
 
   // Initialize and load audio
@@ -197,9 +184,36 @@ async function startExperience() {
 
   // Start the experience
   started = true;
-  lastTime = performance.now(); // Reset time to avoid big deltaTime jump
+  lastTime = performance.now();
 }
 
-startOverlay?.addEventListener('click', startExperience);
+async function startWithSystemAudio() {
+  if (started) return;
+
+  // Request system audio capture
+  const success = await startSystemAudioCapture();
+  
+  if (!success) {
+    alert('Could not capture system audio. Make sure to check "Share audio" when selecting what to share.');
+    return;
+  }
+
+  // Hide the overlay
+  startOverlay?.classList.add('hidden');
+
+  // Start the experience (no built-in audio, just visualization)
+  started = true;
+  lastTime = performance.now();
+}
+
+startBuiltinBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  startWithBuiltinAudio();
+});
+
+startSystemBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  startWithSystemAudio();
+});
 
 animate();

@@ -1,0 +1,338 @@
+{
+  "project": "Zooming",
+  "branchName": "circles/zooming-mvp",
+  "description": "Beat-synced city flight visualizer - fly through an endless procedural city as a bullet, movement synchronized to music",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Project scaffolding with Vite + Three.js",
+      "description": "As a developer, I need a working project structure so I can build and iterate quickly.",
+      "acceptanceCriteria": [
+        "Initialize project with Vite + TypeScript",
+        "Install Three.js and @types/three",
+        "Create index.html with a canvas element",
+        "Create main.ts that initializes a basic Three.js scene with a cube",
+        "Dev server runs with `npm run dev`",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Basic building geometry generator",
+      "description": "As a developer, I need a function that creates randomized building meshes.",
+      "acceptanceCriteria": [
+        "Create src/city/building.ts module",
+        "Export function createBuilding(x, z, seed) that returns a BoxGeometry mesh",
+        "Building height varies randomly (10-100 units) based on seed",
+        "Building width/depth varies (5-20 units) based on seed",
+        "Buildings use a basic MeshStandardMaterial",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "City chunk system",
+      "description": "As a developer, I need a chunk-based system to generate city sections.",
+      "acceptanceCriteria": [
+        "Create src/city/chunk.ts module",
+        "Chunk is a 200x200 unit area containing buildings in a grid pattern",
+        "Export function createChunk(chunkX, chunkZ) that returns a Group of buildings",
+        "Buildings placed with street gaps between them (grid layout)",
+        "Chunk position determined by chunkX/chunkZ coordinates",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Chunk manager for infinite city",
+      "description": "As a viewer, I want the city to extend infinitely as I fly through it.",
+      "acceptanceCriteria": [
+        "Create src/city/chunkManager.ts module",
+        "ChunkManager class tracks loaded chunks and camera position",
+        "Generates chunks ahead of camera (3 chunks in movement direction)",
+        "Removes chunks that are behind camera (beyond 2 chunks back)",
+        "Export update(cameraPosition) method to call each frame",
+        "Typecheck passes",
+        "Verify in browser - city extends as camera moves forward"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Basic lighting setup",
+      "description": "As a viewer, I want the city to be visible with atmospheric lighting.",
+      "acceptanceCriteria": [
+        "Create src/lighting.ts module",
+        "Add ambient light (dim, blue-ish for night feel)",
+        "Add directional light (moonlight from above)",
+        "Set scene background to dark blue/purple gradient or solid color",
+        "Add fog to scene for depth (matching background color)",
+        "Buildings are clearly visible against background",
+        "Typecheck passes",
+        "Verify in browser - city has atmospheric night lighting"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Camera flight path with spline",
+      "description": "As a viewer, I want to fly smoothly through the city with curves.",
+      "acceptanceCriteria": [
+        "Create src/camera/flightPath.ts module",
+        "Generate a CatmullRomCurve3 path through the city",
+        "Path points placed at street level, avoiding building positions",
+        "Path extends as camera approaches end (regenerate ahead)",
+        "Export getPositionAt(t) and getTangentAt(t) methods",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Camera controller with constant motion",
+      "description": "As a viewer, I want to zoom through the city at high speed.",
+      "acceptanceCriteria": [
+        "Create src/camera/cameraController.ts module",
+        "Camera follows flight path at configurable base speed",
+        "Camera looks in direction of travel (using tangent)",
+        "Export update(deltaTime) method",
+        "Export setSpeed(speed) method for later beat sync",
+        "Typecheck passes",
+        "Verify in browser - camera moves smoothly through city following curves"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Audio playback with stock MP3",
+      "description": "As a viewer, I want music to play during the visualization.",
+      "acceptanceCriteria": [
+        "Add a stock MP3 file to public/audio/ directory (electronic/synthwave track)",
+        "Create src/audio/audioPlayer.ts module",
+        "Create AudioContext and load the MP3 file",
+        "Export play() function that starts playback",
+        "Add click-to-start overlay that calls play() and hides itself",
+        "Typecheck passes",
+        "Verify in browser - clicking start plays audio"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Use a royalty-free track. Suggestion: search for 'royalty free synthwave' and download one"
+    },
+    {
+      "id": "US-009",
+      "title": "Audio analyser setup",
+      "description": "As a developer, I need to access frequency data from the playing audio.",
+      "acceptanceCriteria": [
+        "Create src/audio/audioAnalyser.ts module",
+        "Connect AnalyserNode to audio source",
+        "Configure FFT size (2048 recommended)",
+        "Export getFrequencyData() returning Uint8Array",
+        "Export getAverageFrequency() for quick energy reading",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Beat detection algorithm",
+      "description": "As a developer, I need to detect beats from the audio frequency data.",
+      "acceptanceCriteria": [
+        "Create src/audio/beatDetector.ts module",
+        "Analyze low frequency bands (kick drums ~60-150Hz)",
+        "Compare current energy to rolling average",
+        "Trigger beat event when energy exceeds threshold (1.5x average)",
+        "Export onBeat(callback) to subscribe to beat events",
+        "Export getBeatIntensity() returning 0-1 value",
+        "Typecheck passes",
+        "Verify - console.log fires in time with audible kicks"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Speed sync to beat",
+      "description": "As a viewer, I want movement speed to pulse with the beat.",
+      "acceptanceCriteria": [
+        "Connect beatDetector to cameraController",
+        "On beat: boost camera speed by 50-100% based on intensity",
+        "Smoothly interpolate back to base speed over 200ms",
+        "Speed changes feel musical, not jarring",
+        "Typecheck passes",
+        "Verify in browser - visible speed pulses match the beat"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Screen pulse effect on beat",
+      "description": "As a viewer, I want visual feedback that makes beats feel impactful.",
+      "acceptanceCriteria": [
+        "Create src/effects/beatEffects.ts module",
+        "Add FOV pulse on beat (slight zoom in/out)",
+        "Add subtle vignette darkening on beat",
+        "Effects scale with beat intensity",
+        "Effects don't cause nausea (keep subtle)",
+        "Typecheck passes",
+        "Verify in browser - visual pulse visible on beats"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Building window textures",
+      "description": "As a viewer, I want buildings to have lit windows for a realistic night city feel.",
+      "acceptanceCriteria": [
+        "Create or generate a window grid texture (emissive lit windows pattern)",
+        "Apply texture to building materials",
+        "Windows emit light (use emissive map or emissive color)",
+        "Some windows lit, some dark for variety",
+        "Typecheck passes",
+        "Verify in browser - buildings have visible lit windows"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Ground plane with streets",
+      "description": "As a viewer, I want to see streets between buildings.",
+      "acceptanceCriteria": [
+        "Add ground plane mesh at y=0",
+        "Ground uses dark material (asphalt color)",
+        "Optional: street line markings texture",
+        "Ground extends with chunks (or is one large plane)",
+        "Typecheck passes",
+        "Verify in browser - streets visible between buildings"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Transition detection for camera shifts",
+      "description": "As a developer, I need to detect major musical transitions (drops, breakdowns).",
+      "acceptanceCriteria": [
+        "Add transition detection to beatDetector.ts",
+        "Detect significant energy change over 1-2 second window",
+        "Distinguish from regular beats (larger energy delta)",
+        "Export onTransition(callback) to subscribe",
+        "Limit to max 1 transition per 8 seconds (debounce)",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Third-person bullet model",
+      "description": "As a viewer, I want to see my 'bullet' avatar during third-person shots.",
+      "acceptanceCriteria": [
+        "Create src/camera/bulletAvatar.ts module",
+        "Create simple glowing elongated capsule/sphere geometry",
+        "Add point light to bullet for glow effect",
+        "Bullet follows flight path (same as camera but visible)",
+        "Bullet hidden during first-person, shown during third-person",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Camera perspective switching",
+      "description": "As a viewer, I want dramatic camera angle changes on music transitions.",
+      "acceptanceCriteria": [
+        "Connect transition events to camera controller",
+        "On transition: smoothly animate to third-person view (behind/above bullet)",
+        "Third-person lasts 4-8 seconds, then returns to first-person",
+        "Transition animation takes 0.5-1 second (smooth, not instant)",
+        "Show bullet avatar during third-person",
+        "Typecheck passes",
+        "Verify in browser - camera shifts perspective on music energy changes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Motion blur post-processing",
+      "description": "As a viewer, I want motion blur to enhance the sense of speed.",
+      "acceptanceCriteria": [
+        "Add Three.js EffectComposer to render pipeline",
+        "Add motion blur or speed lines effect",
+        "Effect intensity scales with current speed",
+        "Does not tank performance below 60fps",
+        "Typecheck passes",
+        "Verify in browser - motion blur visible at high speed"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Performance optimization pass",
+      "description": "As a viewer, I want smooth 60fps throughout the experience.",
+      "acceptanceCriteria": [
+        "Add fps counter (stats.js or custom)",
+        "Use InstancedMesh for buildings if not already",
+        "Implement frustum culling for off-screen objects",
+        "Profile and fix any memory leaks (check heap over time)",
+        "Maintain 60fps on M1 MacBook for full track duration",
+        "Typecheck passes",
+        "Verify in browser - fps stays at 60 during playback"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Final polish and start screen",
+      "description": "As a viewer, I want a polished start experience.",
+      "acceptanceCriteria": [
+        "Start screen shows 'Zooming' title and 'Click to Start' prompt",
+        "Clicking anywhere starts audio and hides overlay",
+        "Camera begins moving after click",
+        "No errors in console during full playback",
+        "Experience feels cohesive from start to finish",
+        "Typecheck passes",
+        "Verify in browser - complete flow works end to end"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

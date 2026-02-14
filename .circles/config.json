@@ -1,0 +1,11 @@
+{
+  "cwd": "/Users/bryan/code/zooming",
+  "max_iterations": null,
+  "claude_args": null,
+  "hooks": {
+    "start": null,
+    "iteration": null,
+    "stop": null
+  },
+  "hook_timeout": null
+}

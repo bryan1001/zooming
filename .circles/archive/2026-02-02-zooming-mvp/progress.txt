@@ -1,0 +1,459 @@
+## Codebase Patterns
+- Canvas element is in index.html with id="canvas"
+- Three.js scene, camera, and renderer are initialized in src/main.ts
+- Styles go in src/style.css with fullscreen canvas setup
+- Use MeshStandardMaterial for objects that need lighting
+- City-related modules go in src/city/ directory
+- Use seeded random (mulberry32) for reproducible procedural generation
+- Run `npm run typecheck` to verify TypeScript passes
+- CHUNK_SIZE is 200 units (exported from chunk.ts), use for chunk management calculations
+- ChunkManager handles dynamic chunk loading/unloading based on camera position
+- Use deltaTime pattern: const delta = (performance.now() - lastTime) / 1000 for frame-rate independent updates
+- Dispose geometry/materials when removing objects: mesh.geometry.dispose(); mesh.material.dispose()
+- Scene-wide modules (lighting, etc.) go in src/ root, component-specific modules in subdirectories
+- setupLighting(scene) in src/lighting.ts handles all scene lighting configuration
+- Camera-related modules go in src/camera/ directory
+- FlightPath class generates CatmullRomCurve3 through streets, extends dynamically as camera moves
+- BLOCK_SIZE is 25 units (from chunk.ts), streets run at multiples of BLOCK_SIZE
+- FLIGHT_HEIGHT is 30 units (consistent with camera y position)
+- CameraController manages camera movement along FlightPath, use cameraController.update(deltaTime) each frame
+- Audio modules go in src/audio/ directory
+- AudioContext must be created after user interaction (browser autoplay policy)
+- Use click-to-start overlay pattern: show overlay, wait for click, init audio, hide overlay, start experience
+- getSourceNode() from audioPlayer.ts returns AudioBufferSourceNode for connecting to AnalyserNode
+- Audio analyser is auto-initialized by loadAudio() and connects source->analyser->destination
+- Use getFrequencyData() for Uint8Array of frequency bins, getAverageFrequency() for quick energy reading
+- getFrequencyRangeAverage(startBin, endBin) isolates frequency bands (e.g., bass 0-10, mids 10-100)
+- FFT_SIZE is 2048, frequencyBinCount is 1024 (bins cover 0 to Nyquist frequency)
+- For beat-synced effects, use onBeat(callback) and scale effect by intensity (0-1)
+- Frame-rate independent smooth transitions: use exponential decay (1 - e^(-k*deltaTime)), k=15 for ~200ms
+- Effects modules go in src/effects/ directory
+- Use CSS vignette overlay (radial-gradient) for screen darkening effects, pointer-events: none to not block clicks
+- initBeatEffects(camera) in src/effects/beatEffects.ts, then call triggerBeatPulse(intensity) on beat and updateBeatEffects(deltaTime) each frame
+- For multi-material meshes (e.g., different textures per face), use array of materials: new THREE.Mesh(geometry, materials[])
+- BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
+- createWindowTextures(seed, litProbability) in src/city/windowTexture.ts returns colorTexture and emissiveTexture
+- onTransition(callback) in beatDetector.ts for major musical transitions (drops/breakdowns), debounced to 8 seconds
+- BulletAvatar class in src/camera/bulletAvatar.ts for third-person view, takes (scene, flightPath) constructor args
+- Use CapsuleGeometry for elongated glowing objects, rotateX(Math.PI/2) to align with Z-axis
+- Post-processing: import from 'three/examples/jsm/postprocessing/', use EffectComposer with RenderPass + effect passes
+- initMotionBlur(renderer, scene, camera) returns composer, use renderWithMotionBlur() instead of renderer.render()
+- Call resizeMotionBlur(width, height, pixelRatio) on window resize to update composer size
+- Performance modules go in src/performance/ directory
+- Use stats.js for FPS monitoring: initStats(), statsBegin(), statsEnd()
+- InstancedMesh is more efficient than individual meshes: use for buildings in chunks
+- Disable WebGL antialias (false) and use FXAA post-processing pass instead for better performance
+- Limit pixel ratio to 1.5 for better performance on high-DPI displays
+- For InstancedMesh, dispose() only clears instance data; shared geometry/materials persist
+
+---
+
+## 2026-02-02 - US-001
+- What was implemented:
+  - Initialized Vite + TypeScript project
+  - Installed Three.js and @types/three
+  - Created index.html with canvas element
+  - Created main.ts with basic Three.js scene (rotating cube, lighting)
+  - Configured fullscreen canvas styling
+- Files changed:
+  - index.html (canvas element)
+  - src/main.ts (Three.js scene setup)
+  - src/style.css (fullscreen canvas styles)
+  - package.json (added three, @types/three)
+- **Learnings for future iterations:**
+  - Vite uses vanilla-ts template for TypeScript projects
+  - Three.js requires both three and @types/three packages
+  - Canvas needs display:block to prevent scrollbars
+  - MeshStandardMaterial requires lighting to be visible
+  - Run `npm run typecheck` to verify TypeScript (script added to package.json)
+---
+
+## 2026-02-02 - US-002
+- What was implemented:
+  - Created src/city/building.ts module with createBuilding function
+  - Buildings use seeded random number generator for reproducible randomness
+  - Building dimensions: height 10-100 units, width/depth 5-20 units
+  - Buildings positioned with base at y=0
+  - Added typecheck script to package.json
+- Files changed:
+  - src/city/building.ts (new file - building generator)
+  - package.json (added typecheck script)
+- **Learnings for future iterations:**
+  - Use seeded random (mulberry32) for reproducible procedural generation
+  - Position meshes by setting y to half the height for floor-aligned objects
+  - City-related modules go in src/city/ directory
+---
+
+## 2026-02-02 - US-003
+- What was implemented:
+  - Created src/city/chunk.ts module with createChunk function
+  - Chunk is a 200x200 unit area (CHUNK_SIZE constant exported)
+  - Buildings placed in a grid pattern with 25-unit blocks (provides street gaps)
+  - Uses hashPosition() for reproducible building seeds based on world coordinates
+  - Chunk stores its coordinates in userData for identification
+- Files changed:
+  - src/city/chunk.ts (new file - chunk generator)
+- **Learnings for future iterations:**
+  - CHUNK_SIZE is 200 units, exported for use by other modules
+  - Block size of 25 units provides room for buildings (5-20 units) plus street gaps
+  - Use hashPosition() pattern to generate unique seeds from world coordinates
+  - Store chunk identification in Group.userData for later management
+  - Grid layout: blocksPerSide = floor(CHUNK_SIZE / BLOCK_SIZE) = 8 buildings per axis
+---
+
+## 2026-02-02 - US-004
+- What was implemented:
+  - Created src/city/chunkManager.ts module with ChunkManager class
+  - Tracks loaded chunks in a Map using "chunkX,chunkZ" keys
+  - Generates chunks 3 ahead of camera and keeps 2 behind in Z direction
+  - Loads chunks laterally (2 on each side) for visibility
+  - Removes chunks beyond view and disposes of geometry/materials to free memory
+  - Updated main.ts to use ChunkManager and enable camera movement
+  - Camera positioned at street level (y=30) moving forward at 50 units/sec
+  - Increased far plane to 2000 for distant chunk visibility
+- Files changed:
+  - src/city/chunkManager.ts (new file - chunk loading/unloading manager)
+  - src/main.ts (integrated ChunkManager, removed demo cube, added camera movement)
+- **Learnings for future iterations:**
+  - Use Map with string keys for chunk tracking (e.g., "chunkX,chunkZ")
+  - worldToChunk: Math.floor(worldPos / CHUNK_SIZE) converts world to chunk coords
+  - Dispose geometry and materials when removing chunks to prevent memory leaks
+  - Use performance.now() and deltaTime for frame-rate independent movement
+  - Camera far plane needs to be large enough to see distant chunks (2000+ units)
+  - Camera y=30 provides good street-level view of buildings
+---
+
+## 2026-02-02 - US-005
+- What was implemented:
+  - Created src/lighting.ts module with setupLighting function
+  - Dark blue/purple background (0x0a0a1a) for night sky
+  - Fog matching background color (100 to 800 units) for depth and atmosphere
+  - Ambient light (dim blue 0x2a2a4a, intensity 0.5)
+  - Directional moonlight (0x6a6a8a, intensity 0.8) from above
+  - Hemisphere light for natural ambient gradient (sky/ground colors)
+  - Updated main.ts to use new lighting module instead of inline lights
+- Files changed:
+  - src/lighting.ts (new file - atmospheric lighting setup)
+  - src/main.ts (replaced inline lighting with setupLighting call)
+- **Learnings for future iterations:**
+  - Lighting modules go in src/ root (not src/city/) since they're scene-wide
+  - Use fog to hide chunk loading and create depth perception
+  - Fog start/end values (100, 800) work well with CHUNK_SIZE of 200
+  - Hemisphere light adds natural ambient variation (brighter sky, darker ground)
+  - Blue/purple tones (0x2a2a4a) create night atmosphere without being too dark
+---
+
+## 2026-02-02 - US-006
+- What was implemented:
+  - Created src/camera/flightPath.ts module with FlightPath class
+  - Uses CatmullRomCurve3 for smooth path through the city
+  - Path points placed at street level (y=30), along street grid lines (multiples of BLOCK_SIZE)
+  - Dynamically extends path ahead as camera approaches end (EXTEND_THRESHOLD = 500 units)
+  - Exports getPositionAt(t), getTangentAt(t) for parametric access (0-1)
+  - Also exports getPositionAtZ(z), getTangentAtZ(z) for Z-based access
+  - Uses seeded random (mulberry32) for reproducible path variations
+- Files changed:
+  - src/camera/flightPath.ts (new file - spline-based flight path generator)
+- **Learnings for future iterations:**
+  - Camera modules go in src/camera/ directory
+  - Streets run at (n * BLOCK_SIZE) positions, buildings at (n * BLOCK_SIZE + BLOCK_SIZE/2)
+  - CatmullRomCurve3 provides getPointAt(t) and getTangentAt(t) for smooth interpolation
+  - extendIfNeeded(cameraZ) should be called each frame to extend path ahead of camera
+  - Path extends when within EXTEND_THRESHOLD (500 units) of the end
+---
+
+## 2026-02-02 - US-007
+- What was implemented:
+  - Created src/camera/cameraController.ts module with CameraController class
+  - Camera follows FlightPath spline at configurable base speed (default 50 units/sec)
+  - Camera looks in direction of travel using tangent from the path
+  - Exports update(deltaTime) method for frame-rate independent movement
+  - Exports setSpeed(speed), getSpeed(), boostSpeed(multiplier), easeToBaseSpeed(factor) methods for future beat sync
+  - Updated main.ts to use CameraController instead of inline camera movement
+- Files changed:
+  - src/camera/cameraController.ts (new file - camera movement along flight path)
+  - src/main.ts (integrated CameraController, removed inline camera movement)
+- **Learnings for future iterations:**
+  - CameraController wraps FlightPath and camera for unified movement control
+  - Use boostSpeed(multiplier) and easeToBaseSpeed(factor) for beat-synced speed changes
+  - Camera position and lookAt are updated via updateCameraPosition() internal method
+  - getCurrentZ() returns the Z position for chunk manager coordination
+  - All camera movement should go through CameraController.update(deltaTime)
+---
+
+## 2026-02-02 - US-008
+- What was implemented:
+  - Added stock synthwave MP3 to public/audio/synthwave.mp3 (royalty-free from Pixabay)
+  - Created src/audio/audioPlayer.ts module with Web Audio API
+  - AudioContext initialized on user click (browser autoplay policy compliance)
+  - Exports initAudio(), loadAudio(), play(), stop(), getAudioContext(), getSourceNode()
+  - Added click-to-start overlay to index.html with "Zooming" title
+  - Styled overlay with purple glow effect and pulse animation in style.css
+  - Main.ts now waits for click before starting camera movement
+- Files changed:
+  - public/audio/synthwave.mp3 (new file - royalty-free synthwave track)
+  - src/audio/audioPlayer.ts (new file - Web Audio API player)
+  - index.html (added start-overlay div)
+  - src/style.css (added overlay styles)
+  - src/main.ts (integrated audio player, click-to-start flow)
+- **Learnings for future iterations:**
+  - Audio modules go in src/audio/ directory
+  - Browser autoplay policy requires AudioContext creation after user interaction
+  - Use audioContext.state === 'suspended' check and resume() for policy compliance
+  - getSourceNode() returns the AudioBufferSourceNode for connecting to AnalyserNode later
+  - Start overlay pattern: show overlay, wait for click, init audio, hide overlay, start experience
+  - Use CSS transition for smooth overlay fade-out (opacity 0.5s ease)
+---
+
+## 2026-02-02 - US-009
+- What was implemented:
+  - Created src/audio/audioAnalyser.ts module with Web Audio API AnalyserNode
+  - AnalyserNode configured with FFT size 2048 (1024 frequency bins)
+  - Exports getFrequencyData() returning Uint8Array of frequency values (0-255)
+  - Exports getAverageFrequency() for quick overall energy reading
+  - Exports getFrequencyRangeAverage(startBin, endBin) for band-specific analysis
+  - Updated audioPlayer.ts to auto-initialize analyser and route audio through it
+- Files changed:
+  - src/audio/audioAnalyser.ts (new file - frequency analysis module)
+  - src/audio/audioPlayer.ts (imports analyser, routes audio through it)
+- **Learnings for future iterations:**
+  - AnalyserNode.getByteFrequencyData() fills a Uint8Array with frequency values 0-255
+  - Must use Uint8Array<ArrayBuffer> type for TypeScript compatibility with Web Audio API
+  - Audio routing: sourceNode -> analyserNode -> audioContext.destination
+  - smoothingTimeConstant (0.8) smooths frequency data over time for less jittery values
+  - frequencyBinCount = fftSize / 2; each bin covers (sampleRate / fftSize) Hz
+- Beat detector uses updateBeatDetection() each frame and onBeat(callback) for subscriptions
+- For kick drum detection, analyze bins 2-8 (~60-150Hz with FFT_SIZE 2048, sampleRate 44100)
+- Beat threshold of 1.5x rolling average works well for detecting kicks
+---
+
+## 2026-02-02 - US-010
+- What was implemented:
+  - Created src/audio/beatDetector.ts module for beat detection
+  - Analyzes low frequency bands (kick drums ~60-150Hz)
+  - Compares current energy to rolling average (43 frames history)
+  - Triggers beat when energy exceeds 1.5x rolling average
+  - Minimum 100ms interval between beats to avoid double-triggers
+  - Exports onBeat(callback) for subscribing to beat events with intensity
+  - Exports getBeatIntensity() returning 0-1 value that decays between beats
+  - Added console.log in main.ts for verification
+  - Updated main.ts to call updateBeatDetection() in animation loop
+- Files changed:
+  - src/audio/beatDetector.ts (new file - beat detection algorithm)
+  - src/main.ts (integrated beat detector, added verification logging)
+- **Learnings for future iterations:**
+  - Beat detection requires calling updateBeatDetection() every frame
+  - Kick drums are typically 60-150Hz, convert to FFT bins: bin = freq * FFT_SIZE / sampleRate
+  - Rolling average history of ~1 second (43 frames at 60fps) provides good baseline
+  - Minimum beat interval (100ms) prevents false double-triggers
+  - Intensity calculated as how much energy exceeds threshold, normalized to 0-1
+  - offBeat(callback) available for cleanup when needed
+---
+
+## 2026-02-02 - US-011
+- What was implemented:
+  - Connected beatDetector to cameraController for beat-synced speed pulses
+  - On beat: boost camera speed by 50-100% based on beat intensity
+  - Speed boost calculated as: MIN_SPEED_BOOST + (MAX_SPEED_BOOST - MIN_SPEED_BOOST) * intensity
+  - Smoothly interpolates back to base speed using exponential decay (~200ms return time)
+  - Frame-rate independent using: easeFactor = 1 - Math.exp(-15 * deltaTime)
+  - Removed verification console.log, speed changes are now applied directly
+- Files changed:
+  - src/main.ts (beat callback now boosts camera speed, added easeToBaseSpeed in animation loop)
+- **Learnings for future iterations:**
+  - Use exponential decay (1 - e^(-k*dt)) for frame-rate independent smooth transitions
+  - k=15 gives approximately 200ms return time (95% decay)
+  - Speed boost multiplier: 1.5 = 50% boost, 2.0 = 100% boost
+  - easeToBaseSpeed() should be called every frame BEFORE cameraController.update()
+  - Beat intensity (0-1) can be used to scale visual/audio effects proportionally
+---
+
+## 2026-02-02 - US-012
+- What was implemented:
+  - Created src/effects/beatEffects.ts module for visual beat effects
+  - FOV pulse effect: increases FOV by up to 8 degrees on beat, decays smoothly
+  - Vignette darkening effect: CSS radial-gradient overlay darkens screen edges on beat
+  - Both effects scale with beat intensity (0-1)
+  - Uses exponential decay for smooth transitions (~200ms return time)
+  - Integrated into main.ts: initBeatEffects(camera), triggerBeatPulse(intensity), updateBeatEffects(deltaTime)
+- Files changed:
+  - src/effects/beatEffects.ts (new file - visual beat effects module)
+  - src/main.ts (integrated beat effects initialization and updates)
+- **Learnings for future iterations:**
+  - Effects modules go in src/effects/ directory
+  - Use CSS overlay with radial-gradient for vignette effects (performant, no WebGL overhead)
+  - pointer-events: none on overlays prevents blocking user interactions
+  - FOV changes require camera.updateProjectionMatrix() after modification
+  - Exponential decay with k=12-15 provides smooth ~200ms visual transitions
+  - Keep effects subtle to avoid motion sickness: MAX_FOV_PULSE=8, MAX_VIGNETTE=0.4
+---
+
+## 2026-02-02 - US-013
+- What was implemented:
+  - Created src/city/windowTexture.ts module for procedural window texture generation
+  - Uses HTML Canvas to draw window grids with lit/dark windows
+  - Creates both color texture and emissive texture for window glow effect
+  - Updated building.ts to use multi-material approach (6 materials for BoxGeometry faces)
+  - Window textures applied to front, back, left, right faces; roof/bottom use plain material
+  - UV repeat calculated based on building dimensions for consistent window sizes
+  - Texture caching to avoid recreating textures for same seed
+- Files changed:
+  - src/city/windowTexture.ts (new file - procedural window texture generator)
+  - src/city/building.ts (updated to use window textures with multi-material)
+- **Learnings for future iterations:**
+  - BoxGeometry face order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
+  - Use array of materials for multi-material meshes: new THREE.Mesh(geometry, materials[])
+  - CanvasTexture from canvas element works well for procedural textures
+  - Set texture.wrapS/wrapT = THREE.RepeatWrapping for tiling, use repeat.set() for scaling
+  - Clone textures when different faces need different repeat values
+  - emissiveMap with emissive=0xffffff and emissiveIntensity creates glowing effect
+  - Texture caching (Map<seed, texture>) prevents redundant texture generation
+---
+
+## 2026-02-02 - US-014
+- What was implemented:
+  - Created src/city/ground.ts module for procedural street ground plane
+  - Ground plane at y=0 with dark asphalt color (0x1a1a1a)
+  - Procedural street texture using canvas with grid lines between blocks
+  - Street center dashed lines for visual detail
+  - Ground plane added to each chunk, extends with chunk loading
+  - Updated chunkManager.ts to properly dispose material arrays
+- Files changed:
+  - src/city/ground.ts (new file - ground plane with street texture)
+  - src/city/chunk.ts (imports and adds ground to each chunk)
+  - src/city/chunkManager.ts (fixed material disposal for arrays)
+- **Learnings for future iterations:**
+  - PlaneGeometry is vertical by default, use rotateX(-Math.PI/2) to make horizontal
+  - Cache shared textures (like street texture) to avoid recreating on every chunk
+  - When disposing materials, check if Array.isArray(material) for multi-material meshes
+  - Ground at y=0, camera at y=30 gives good visibility of streets at building bases
+---
+
+## 2026-02-02 - US-015
+- What was implemented:
+  - Added transition detection to src/audio/beatDetector.ts module
+  - Detects significant energy changes over 2-second window (TRANSITION_HISTORY_SIZE = 120 frames)
+  - Compares recent energy (~0.5s) to long-term average for detection
+  - Energy spike (drops) detected when ratio > 2.0, energy dip (breakdowns) when ratio < 0.5
+  - Debounced to max 1 transition per 8 seconds (MIN_TRANSITION_INTERVAL_MS = 8000)
+  - Exports onTransition(callback) and offTransition(callback) for subscriptions
+  - Updates resetBeatDetection() to clear transition state
+- Files changed:
+  - src/audio/beatDetector.ts (added transition detection logic and exports)
+- **Learnings for future iterations:**
+  - Use longer history window (2s vs 1s) for transition detection to distinguish from beats
+  - Compare recent average to long-term average for detecting significant energy shifts
+  - Energy ratio > 2.0 indicates drop/build-up climax, ratio < 0.5 indicates breakdown
+  - Debounce of 8 seconds prevents multiple transitions during sustained energy changes
+  - offTransition(callback) available for cleanup when needed
+---
+
+## 2026-02-02 - US-016
+- What was implemented:
+  - Created src/camera/bulletAvatar.ts module with BulletAvatar class
+  - Glowing elongated capsule geometry using THREE.CapsuleGeometry
+  - Emissive cyan material (0x00ffff) with metallic sheen for bullet glow
+  - PointLight attached to bullet for dynamic glow illumination
+  - update(z) method to follow flight path position and orientation
+  - show() and hide() methods for perspective switching
+  - dispose() method for cleanup
+- Files changed:
+  - src/camera/bulletAvatar.ts (new file - bullet avatar for third-person view)
+- **Learnings for future iterations:**
+  - CapsuleGeometry(radius, length, capSegments, radialSegments) creates elongated capsule
+  - rotateX(Math.PI/2) on geometry aligns capsule with Z-axis (forward direction)
+  - Use group.lookAt() for orientation when following a path with tangent
+  - BulletAvatar requires FlightPath from cameraController.getFlightPath()
+  - Start bullet hidden (first-person default), show() for third-person transitions
+---
+
+## 2026-02-02 - US-017
+- What was implemented:
+  - Added perspective switching to CameraController (first-person/third-person)
+  - Smooth camera transition animation using smoothstep easing (0.8s duration)
+  - Third-person view positions camera behind and above bullet (offset: y=15, z=-40)
+  - Auto-return to first-person after 6 seconds
+  - Perspective change event system with onPerspectiveChange callback
+  - Connected onTransition events from beatDetector to trigger third-person
+  - Integrated BulletAvatar visibility with perspective changes
+  - BulletAvatar position updated in animation loop
+- Files changed:
+  - src/camera/cameraController.ts (added perspective switching logic)
+  - src/main.ts (integrated BulletAvatar, transition events, perspective callbacks)
+- **Learnings for future iterations:**
+  - Use smoothstep(t) = t*t*(3-2*t) for natural camera transitions
+  - Calculate third-person offset relative to tangent direction using cross products
+  - lerpVectors() interpolates between two Vector3 positions smoothly
+  - perspectiveTransitionProgress tracks 0→1 during transition
+  - onTransition callback provides intensity (0-1), use threshold (>0.3) to avoid false triggers
+  - Keep auto-return timer (THIRD_PERSON_DURATION) around 6 seconds for dramatic effect
+---
+
+## 2026-02-02 - US-018
+- What was implemented:
+  - Created src/effects/motionBlur.ts module for motion blur post-processing
+  - Added EffectComposer with RenderPass and custom RadialBlurShader
+  - Radial blur creates speed lines effect emanating from screen center
+  - Blur intensity scales with camera speed (no blur at base 50 units/s, max at 150 units/s)
+  - Updated main.ts to use composer for rendering and update blur on speed changes
+  - Added resize handler for composer
+- Files changed:
+  - src/effects/motionBlur.ts (new file - radial motion blur post-processing)
+  - src/main.ts (integrated motion blur: init, update, render, resize)
+- **Learnings for future iterations:**
+  - Three.js post-processing: import from 'three/examples/jsm/postprocessing/'
+  - EffectComposer chains passes: RenderPass first, then effect passes
+  - Custom shaders use ShaderPass with uniforms object
+  - Radial blur samples along direction from center for speed lines effect
+  - Call composer.setSize() on window resize to match renderer size
+  - Use renderWithMotionBlur() instead of renderer.render() when using composer
+  - Keep MAX_BLUR_STRENGTH low (0.15) to avoid nausea while maintaining speed feel
+---
+
+## 2026-02-02 - US-019
+- What was implemented:
+  - Added stats.js FPS counter (src/performance/stats.ts)
+  - Created InstancedMesh system for buildings (src/city/instancedBuildings.ts)
+  - Updated chunk.ts to use InstancedMesh instead of individual building meshes
+  - Reduced material variants from 4 to 2 for fewer draw calls
+  - Reduced radial blur shader samples from 16 to 8
+  - Disabled WebGL antialiasing and added FXAA post-processing pass instead
+  - Limited pixel ratio to 1.5 for better performance on high-DPI displays
+  - Updated chunkManager.ts to properly dispose InstancedMesh
+  - Added frustumCulled = true explicitly to ground plane
+- Files changed:
+  - src/performance/stats.ts (new file - FPS counter)
+  - src/city/instancedBuildings.ts (new file - InstancedMesh building system)
+  - src/city/chunk.ts (refactored to use InstancedMesh)
+  - src/city/chunkManager.ts (updated disposal for InstancedMesh)
+  - src/city/ground.ts (added explicit frustum culling)
+  - src/effects/motionBlur.ts (added FXAA pass, reduced blur samples)
+  - src/main.ts (integrated stats, disabled antialias, limited pixel ratio)
+  - package.json (added stats.js dependency)
+- **Learnings for future iterations:**
+  - InstancedMesh uses shared geometry/materials - only dispose instance data per chunk
+  - FXAA is much faster than MSAA antialiasing for comparable quality
+  - Reducing shader sample count (16→8) significantly improves performance
+  - Pixel ratio limiting (1.5 instead of 2) helps on Retina displays
+  - Group buildings by material type to minimize draw calls with InstancedMesh
+  - Performance modules go in src/performance/ directory
+---
+
+## 2026-02-02 - US-020
+- What was implemented:
+  - Verified existing start screen implementation meets all acceptance criteria
+  - Start screen shows "ZOOMING" title with purple glow effect
+  - "Click anywhere to start" prompt with pulse animation
+  - Clicking starts audio playback and hides overlay with smooth fade transition
+  - Camera movement begins immediately after click
+  - Browser testing confirmed no console errors during full playback
+  - Experience runs cohesively at stable 60 FPS
+- Files changed:
+  - No code changes needed - existing implementation already satisfies all criteria
+  - .circles/prd.json (marked US-020 as passes: true)
+- **Learnings for future iterations:**
+  - The start-to-finish flow was already well-implemented in previous stories
+  - Always verify the full experience end-to-end before marking complete
+  - Browser testing is essential for frontend stories - use screenshots to verify
+  - FPS counter (stats.js) is valuable for confirming performance during testing
+---

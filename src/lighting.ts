@@ -1,30 +1,40 @@
 import * as THREE from 'three';
 
 /**
- * Sets up atmospheric night lighting for the city scene.
- * Creates an immersive dark city vibe with moonlight and fog.
+ * Sets up bright lighting for the city scene.
+ * Well-lit with lighter sky.
  */
 export function setupLighting(scene: THREE.Scene): void {
-  // Set dark blue/purple background for night sky
-  scene.background = new THREE.Color(0x0a0a1a);
+  // Light blue-gray sky
+  scene.background = new THREE.Color(0x667788);
 
-  // Add fog matching background color for depth and atmosphere
-  // Fog helps hide chunk loading and creates sense of infinite city
-  scene.fog = new THREE.Fog(0x0a0a1a, 100, 800);
+  // Fog pushed way out for longer view distance
+  scene.fog = new THREE.Fog(0x667788, 400, 2000);
 
-  // Ambient light - dim blue-ish for night feel
-  // Provides base illumination so buildings aren't completely black
-  const ambientLight = new THREE.AmbientLight(0x2a2a4a, 0.5);
+  // Very strong ambient light for visibility
+  const ambientLight = new THREE.AmbientLight(0xaabbcc, 5.0);
   scene.add(ambientLight);
 
-  // Directional light - moonlight from above and slightly behind
-  // Creates subtle highlights on building tops
-  const moonLight = new THREE.DirectionalLight(0x6a6a8a, 0.8);
+  // Main directional light - bright moonlight
+  const moonLight = new THREE.DirectionalLight(0xffffff, 3.0);
   moonLight.position.set(50, 200, -100);
   scene.add(moonLight);
 
-  // Add a subtle hemisphere light for more natural ambient lighting
-  // Sky color (top) is dark blue, ground color is even darker
-  const hemisphereLight = new THREE.HemisphereLight(0x2a2a5a, 0x1a1a1a, 0.3);
+  // Front light for face visibility - very bright
+  const frontLight = new THREE.DirectionalLight(0xccccff, 3.0);
+  frontLight.position.set(0, 50, 300);
+  scene.add(frontLight);
+
+  // Side lights for depth - brighter
+  const leftLight = new THREE.DirectionalLight(0x8888cc, 2.0);
+  leftLight.position.set(-200, 100, 0);
+  scene.add(leftLight);
+
+  const rightLight = new THREE.DirectionalLight(0x8888cc, 2.0);
+  rightLight.position.set(200, 100, 0);
+  scene.add(rightLight);
+
+  // Hemisphere light for strong fill
+  const hemisphereLight = new THREE.HemisphereLight(0x99aacc, 0x445566, 3.0);
   scene.add(hemisphereLight);
 }
