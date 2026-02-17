@@ -13,15 +13,27 @@ if [ ! -d .git ]; then
     git remote add dokku dokku@local.eliln.com:zooming
 fi
 
-# Create .static marker for nginx buildpack
-touch .static
+# Create Dockerfile for Node+Express serving
+cat > Dockerfile <<'EOF'
+FROM node:20-alpine
+WORKDIR /app
+RUN npm init -y && npm install express
+COPY . .
+EXPOSE 5000
+CMD ["node", "server.js"]
+EOF
 
-# Copy nginx config for SPA routing if it exists
-[ -f ../nginx.conf.sigil ] && cp ../nginx.conf.sigil .
+# Copy server.js and rename dist content to public/
+mkdir -p public
+cp ../server.js .
+# Move built files into public/
+for f in *; do
+  [ "$f" = "public" ] || [ "$f" = "server.js" ] || [ "$f" = "Dockerfile" ] || [ "$f" = ".git" ] || [ "$f" = "Procfile" ] || [ "$f" = ".static" ] || mv "$f" "public/" 2>/dev/null || true
+done
 
 # Commit and push
 git add -A
 git commit -m "Deploy $(date '+%Y-%m-%d %H:%M:%S')" --allow-empty
-git push dokku main --force
+GIT_SSH_COMMAND="ssh -i $HOME/.ssh/openclaw_ed25519" git push dokku main --force
 
 echo "Deployed to https://zooming.eliln.com"
