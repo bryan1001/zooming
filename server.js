@@ -67,7 +67,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => {
+app.get('{*path}', (req, res) => {
   const f = path.join(__dirname, 'public', 'index.html');
   res.sendFile(f);
 });
